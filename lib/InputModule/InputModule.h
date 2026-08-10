@@ -8,11 +8,6 @@
 
 // Function declarations
 
-/**
- * @brief Checks all rotary encoders for position changes and sends updates.
- * Monitors Enc_1 and Enc_2 for rotation and reports direction to SPAD.neXt.
- */
-void CheckAllEncoders();
 
 /**
  * @brief Checks all buttons for state changes and sends updates.

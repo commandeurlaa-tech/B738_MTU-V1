@@ -13,5 +13,4 @@ void loop()
 {
     messenger.feedinSerialData();
     CheckAllButtons();  // <-- DEZE ONTBRAK
-    CheckAllEncoders(); // <-- EN DEZE
 }

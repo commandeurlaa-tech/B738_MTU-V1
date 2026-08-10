@@ -13,11 +13,5 @@ enum
   kPaneldimmer1 = 20,
   KPanLightDim = 21,
   kGameState = 22,
-  dIASoverspeed = 23,   //22
-  dIASunderspeed = 24,  //23
-  dIASblank = 25,       //22
-  dHeading = 26,        //31
-  dIASMach = 27,        //32
-  dCourseL = 28,        //33
-  dHDGBANK = 29,
+  
 };

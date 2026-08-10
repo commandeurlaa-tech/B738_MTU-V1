@@ -8,7 +8,7 @@ void onIncomingData() {
     float fldataVal = messenger.readFloatArg();  // Led value
     fldataVal = fldataVal * 255;
     int32_t dataVal = round(fldataVal);
-    analogWrite(4, dataVal);
+    analogWrite(9, dataVal);
     if (dataVal >= 1) {
       digitalWrite(13, HIGH);
     } else {
@@ -16,9 +16,9 @@ void onIncomingData() {
     }
     int dimvalue = round(dataVal / 40);
     if (olddimvalue != dimvalue) {
-      disp_IAS.setBrightness(dimvalue);
-      disp_CRS_L.setBrightness(dimvalue);
-      disp_HDG.setBrightness(dimvalue);
+    //  disp_IAS.setBrightness(dimvalue);
+     // disp_CRS_L.setBrightness(dimvalue);
+     // disp_HDG.setBrightness(dimvalue);
       olddimvalue = dimvalue;
     }
   }
@@ -33,9 +33,9 @@ analogWrite(4, dimvalue);
 int brightness = round(dimvalue / 40);
 
 if (olddimvalue != brightness) {
-  disp_IAS.setBrightness(brightness);
-  disp_CRS_L.setBrightness(brightness);
-  disp_HDG.setBrightness(brightness);
+ // disp_IAS.setBrightness(brightness);
+  //disp_CRS_L.setBrightness(brightness);
+  //disp_HDG.setBrightness(brightness);
   olddimvalue = brightness;
 }
 
@@ -47,14 +47,15 @@ digitalWrite(13, HIGH);
    //  messenger.sendCmd(kDebug, "STATS VLIEGTUIG" );
    //  messenger.sendCmd(kDebug,  Dimvalue);
     if (Dimvalue > 0 ) {
-      analogWrite(5, 255);
-      analogWrite(6, 255);
+      analogWrite(9, 255);
+    /*  analogWrite(6, 255);
       analogWrite(7, 255);
       analogWrite(8, 255);
       analogWrite(9, 255);
       analogWrite(10, 255);
       analogWrite(11, 255);
       analogWrite(12, 255);
+      */
     }
   }
 

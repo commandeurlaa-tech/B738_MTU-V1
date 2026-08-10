@@ -21,17 +21,9 @@ struct LedDef {
 // ---------- LED LIJST ----------
 LedDef leds[] = {
 
-    // ===== FUEL =====
-    {54, "lATARM"},
-    {55, "lFDL"},
-    {56, "lN1"},
-    {57, "lSPD"},
-    {58, "lVNAV"},
-    {59, "lLVLCHG"},
-    {60, "lHDGSEL"},
-    {61, "LAPP"},
-    {62, "LVORLOC"},
-    {63, "lLNAV"},
+    // ========
+    {28, "PARKINGBRAKE"},
+ 
     
 };
 
