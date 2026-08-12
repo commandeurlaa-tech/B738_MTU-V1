@@ -4,27 +4,31 @@
 #include "DataModule.h"
 #include "SpadModule.h"
 
-
-void onSpadEvent() {
+void onSpadEvent()
+{
   char *szEvent = messenger.readStringArg();
-  if (strcmp(szEvent, "START") == 0) {  // SPAD tells device, it's ok to send input now
+  if (strcmp(szEvent, "START") == 0)
+  { // SPAD tells device, it's ok to send input now
     isStarted = 1;
     messenger.sendCmdStart(kCommand);
     messenger.sendCmdArg("REFRESHDATA");
     messenger.sendCmdEnd();
     return;
   }
-  if (strcmp(szEvent, "END") == 0) {  // SPAD tells device it will exit now
+  if (strcmp(szEvent, "END") == 0)
+  { // SPAD tells device it will exit now
     isStarted = 0;
     return;
   }
 }
 
-void onUnknownCommand() {
+void onUnknownCommand()
+{
   messenger.sendCmd(3, "UNKNOWN COMMAND");
 }
 
-void attachCommandCallbacks() {
+void attachCommandCallbacks()
+{
   messenger.sendCmd(kDebug, "ATTACHING CALLBACKS!");
   messenger.attach(kRequest, onIdentifyRequest);
   messenger.attach(kEvent, onSpadEvent);
@@ -35,31 +39,33 @@ void attachCommandCallbacks() {
 
 // ------------------------ PROCESS FUNCTIONS--------------------
 
-
-
-void onIdentifyRequest() {
+void onIdentifyRequest()
+{
   char *szRequest = messenger.readStringArg();
 
-  if (strcmp(szRequest, "INIT") == 0) {
+  if (strcmp(szRequest, "INIT") == 0)
+  {
     messenger.sendCmdStart(kRequest);
     messenger.sendCmdArg("SPAD");
-    messenger.sendCmdArg(F("{2656302a-8aa7-4c93-bda6-7a12d883953e}"));  // bd465a74-6211-46bf-8f69-e2b5ae5c81e8 laatste cijfere was 9
-    messenger.sendCmdArg("B737_MTU");  // DEVICE DISPLAY NAME
-    messenger.sendCmdArg(2);               // SPAD SERIAL VERSION, DON'T CHANGE
-    messenger.sendCmdArg("1");             // DEVICE VERSION NUMBER
+    messenger.sendCmdArg(F("{2656302a-8aa7-4c93-bda6-7a12d883953e}"));   // bd465a74-6211-46bf-8f69-e2b5ae5c81e8 laatste cijfere was 9
+    messenger.sendCmdArg("B737_MTU");                                    // DEVICE DISPLAY NAME
+    messenger.sendCmdArg(2);                                             // SPAD SERIAL VERSION, DON'T CHANGE
+    messenger.sendCmdArg("1");                                           // DEVICE VERSION NUMBER
     messenger.sendCmdArg("AUTHOR=2656302a-8aa7-4c93-bda6-7a12d883953e"); // AUTHOR ID
     messenger.sendCmdEnd();
     return;
   }
 
-  if (strcmp(szRequest, "SCANSTATE") == 0) {
+  if (strcmp(szRequest, "SCANSTATE") == 0)
+  {
     messenger.sendCmdStart(kRequest);
     messenger.sendCmdArg("STATESCAN");
     messenger.sendCmdEnd();
     return;
   }
 
-  if (strcmp(szRequest, "PING") == 0) {
+  if (strcmp(szRequest, "PING") == 0)
+  {
     messenger.sendCmdStart(kRequest);
     messenger.sendCmdArg("PONG");
     messenger.sendCmdArg(messenger.readInt32Arg());
@@ -67,7 +73,8 @@ void onIdentifyRequest() {
     return;
   }
 
-  if (strcmp(szRequest, "CONFIG") == 0) {
+  if (strcmp(szRequest, "CONFIG") == 0)
+  {
     messenger.sendCmdStart(kRequest);
     messenger.sendCmdArg("OPTION");
     messenger.sendCmdArg("ISGENERIC=1");
@@ -84,9 +91,9 @@ void onIdentifyRequest() {
     messenger.sendCmdArg("LVAR:BL_MainCA");
     messenger.sendCmdEnd();
 
-    messenger.sendCmdStart(kCommand);    // This is a "1" or Command:1 from Spad list
-    messenger.sendCmdArg("SUBSCRIBE");   // Subcommand..ADD - SUBSCRIBE - UNSUBSCRIBE - EMULATE
-    messenger.sendCmdArg(KPanLightDim);  // CMDID value defined at the top as 10
+    messenger.sendCmdStart(kCommand);   // This is a "1" or Command:1 from Spad list
+    messenger.sendCmdArg("SUBSCRIBE");  // Subcommand..ADD - SUBSCRIBE - UNSUBSCRIBE - EMULATE
+    messenger.sendCmdArg(KPanLightDim); // CMDID value defined at the top as 10
     messenger.sendCmdArg("LOCAL:PANELLIGHTDENSITY");
     messenger.sendCmdEnd();
 
@@ -96,80 +103,107 @@ void onIdentifyRequest() {
     messenger.sendCmdArg("LOCAL:GAMESTATE");
     messenger.sendCmdEnd();
 
-    
-    //----- CREATE ENCODERS --------------------------------------------------------------
+    messenger.sendCmdStart(kCommand);
+    messenger.sendCmdArg("SUBSCRIBE");
+    messenger.sendCmdArg(kBrakeLeft);
+    messenger.sendCmdArg("SIMCONNECT:BRAKE LEFT POSITION");
+    messenger.sendCmdEnd();
 
+    messenger.sendCmdStart(kCommand);
+    messenger.sendCmdArg("SUBSCRIBE");
+    messenger.sendCmdArg(kBrakeRight);
+    messenger.sendCmdArg("SIMCONNECT:BRAKE RIGHT POSITION");
+    messenger.sendCmdEnd();
+
+    messenger.sendCmdStart(kCommand);
+messenger.sendCmdArg("SUBSCRIBE");
+messenger.sendCmdArg(kBrakeLeft);
+messenger.sendCmdArg("SIMCONNECT:BRAKE LEFT POSITION");
+messenger.sendCmdEnd();
+
+messenger.sendCmdStart(kCommand);
+messenger.sendCmdArg("SUBSCRIBE");
+messenger.sendCmdArg(kBrakeRight);
+messenger.sendCmdArg("SIMCONNECT:BRAKE RIGHT POSITION");
+messenger.sendCmdEnd();
+
+messenger.sendCmdStart(kCommand);
+messenger.sendCmdArg("SUBSCRIBE");
+messenger.sendCmdArg(kParkingBrake);
+messenger.sendCmdArg("SIMCONNECT:BRAKE PARKING POSITION");
+messenger.sendCmdEnd();
+    //----- CREATE ENCODERS --------------------------------------------------------------
 
     //----- CREATE BUTTONS-----------------------------------------------------
 
     messenger.sendCmdStart(kRequest);
     messenger.sendCmdArg(F("INPUT"));
     messenger.sendCmdArg(10);               // This is the button ID
-    messenger.sendCmdArg(F("AT_DISARM_1"));    //SPAD GUI Display name
+    messenger.sendCmdArg(F("AT_DISARM_1")); // SPAD GUI Display name
     messenger.sendCmdArg(F("PUSHBUTTON"));  // Type
     messenger.sendCmdArg(F(""));            // Behaviour
     messenger.sendCmdEnd();
 
     messenger.sendCmdStart(kRequest);
     messenger.sendCmdArg(F("INPUT"));
-    messenger.sendCmdArg(11);               // This is the button ID
-    messenger.sendCmdArg(F("TOGA_1"));          //SPAD GUI Display name
-    messenger.sendCmdArg(F("PUSHBUTTON"));  // Type
-    messenger.sendCmdArg(F(""));            // Behaviour
+    messenger.sendCmdArg(11);              // This is the button ID
+    messenger.sendCmdArg(F("TOGA_1"));     // SPAD GUI Display name
+    messenger.sendCmdArg(F("PUSHBUTTON")); // Type
+    messenger.sendCmdArg(F(""));           // Behaviour
     messenger.sendCmdEnd();
 
     messenger.sendCmdStart(kRequest);
     messenger.sendCmdArg(F("INPUT"));
     messenger.sendCmdArg(12);               // This is the button ID
-    messenger.sendCmdArg(F("AT_DISARM_2"));    //SPAD GUI Display name
+    messenger.sendCmdArg(F("AT_DISARM_2")); // SPAD GUI Display name
     messenger.sendCmdArg(F("PUSHBUTTON"));  // Type
     messenger.sendCmdArg(F(""));            // Behaviour
     messenger.sendCmdEnd();
 
     messenger.sendCmdStart(kRequest);
     messenger.sendCmdArg(F("INPUT"));
-    messenger.sendCmdArg(13);               // This is the button ID
-    messenger.sendCmdArg(F("TOGA_2"));          //SPAD GUI Display name
-    messenger.sendCmdArg(F("PUSHBUTTON"));  // Type
-    messenger.sendCmdArg(F(""));            // Behaviour
-    messenger.sendCmdEnd();
-/*
-    messenger.sendCmdStart(kRequest);
-    messenger.sendCmdArg(F("INPUT"));
-    messenger.sendCmdArg(14);               // This is the button ID
-    messenger.sendCmdArg(F("TRIMSTOP1"));         //SPAD GUI Display name
-    messenger.sendCmdArg(F("PUSHBUTTON"));  // Type
-    messenger.sendCmdArg(F(""));            // Behaviour
+    messenger.sendCmdArg(13);              // This is the button ID
+    messenger.sendCmdArg(F("TOGA_2"));     // SPAD GUI Display name
+    messenger.sendCmdArg(F("PUSHBUTTON")); // Type
+    messenger.sendCmdArg(F(""));           // Behaviour
     messenger.sendCmdEnd();
 
     messenger.sendCmdStart(kRequest);
     messenger.sendCmdArg(F("INPUT"));
-    messenger.sendCmdArg(15);               // This is the button ID
-    messenger.sendCmdArg(F("TRIMSTOP2"));        //SPAD GUI Display name
-    messenger.sendCmdArg(F("PUSHBUTTON"));  // Type
-    messenger.sendCmdArg(F(""));            // Behaviour
+    messenger.sendCmdArg(14);              // This is the button ID
+    messenger.sendCmdArg(F("TRIMSTOP1"));  // SPAD GUI Display name
+    messenger.sendCmdArg(F("PUSHBUTTON")); // Type
+    messenger.sendCmdArg(F(""));           // Behaviour
     messenger.sendCmdEnd();
 
     messenger.sendCmdStart(kRequest);
     messenger.sendCmdArg(F("INPUT"));
-    messenger.sendCmdArg(16);               // This is the button ID
-    messenger.sendCmdArg(F("STAB_MAIN_ELEC"));     //SPAD GUI Display name
-    messenger.sendCmdArg(F("PUSHBUTTON"));  // Type
-    messenger.sendCmdArg(F(""));            // Behaviour
+    messenger.sendCmdArg(15);              // This is the button ID
+    messenger.sendCmdArg(F("TRIMSTOP2"));  // SPAD GUI Display name
+    messenger.sendCmdArg(F("PUSHBUTTON")); // Type
+    messenger.sendCmdArg(F(""));           // Behaviour
     messenger.sendCmdEnd();
 
     messenger.sendCmdStart(kRequest);
     messenger.sendCmdArg(F("INPUT"));
-    messenger.sendCmdArg(17);               // This is the button ID
-    messenger.sendCmdArg(F("TRIMAUTOPILOT"));     //SPAD GUI Display name
-    messenger.sendCmdArg(F("PUSHBUTTON"));  // Type
-    messenger.sendCmdArg(F(""));            // Behaviour
+    messenger.sendCmdArg(16);                  // This is the button ID
+    messenger.sendCmdArg(F("STAB_MAIN_ELEC")); // SPAD GUI Display name
+    messenger.sendCmdArg(F("SWITCH"));         // Type
+    messenger.sendCmdArg(F(""));               // Behaviour
+    messenger.sendCmdEnd();
+
+    messenger.sendCmdStart(kRequest);
+    messenger.sendCmdArg(F("INPUT"));
+    messenger.sendCmdArg(17);                 // This is the button ID
+    messenger.sendCmdArg(F("TRIMAUTOPILOT")); // SPAD GUI Display name
+    messenger.sendCmdArg(F("SWITCH"));        // Type
+    messenger.sendCmdArg(F(""));              // Behaviour
     messenger.sendCmdEnd();
 
     messenger.sendCmdStart(kRequest);
     messenger.sendCmdArg(F("INPUT"));
     messenger.sendCmdArg(18);               // This is the button ID
-    messenger.sendCmdArg(F("REVESER1"));         //SPAD GUI Display name
+    messenger.sendCmdArg(F("HORN_CUTOUT")); // SPAD GUI Display name
     messenger.sendCmdArg(F("PUSHBUTTON"));  // Type
     messenger.sendCmdArg(F(""));            // Behaviour
     messenger.sendCmdEnd();
@@ -177,37 +211,36 @@ void onIdentifyRequest() {
     messenger.sendCmdStart(kRequest);
     messenger.sendCmdArg(F("INPUT"));
     messenger.sendCmdArg(19);               // This is the button ID
-    messenger.sendCmdArg(F("REVERSER2"));     //SPAD GUI Display name
-    messenger.sendCmdArg(F("PUSHBUTTON"));  // Type
+    messenger.sendCmdArg(F("FUELCUTOFF2")); // SPAD GUI Display name
+    messenger.sendCmdArg(F("SWITCH"));      // Type
     messenger.sendCmdArg(F(""));            // Behaviour
     messenger.sendCmdEnd();
 
     messenger.sendCmdStart(kRequest);
     messenger.sendCmdArg(F("INPUT"));
     messenger.sendCmdArg(20);               // This is the button ID
-    messenger.sendCmdArg(F("FUELCUFOFF1"));        //SPAD GUI Display name
-    messenger.sendCmdArg(F("SWITCH"));  // Type
+    messenger.sendCmdArg(F("FUELCUFOFF1")); // SPAD GUI Display name
+    messenger.sendCmdArg(F("SWITCH"));      // Type
     messenger.sendCmdArg(F(""));            // Behaviour
     messenger.sendCmdEnd();
 
     messenger.sendCmdStart(kRequest);
     messenger.sendCmdArg(F("INPUT"));
-    messenger.sendCmdArg(21);               // This is the button ID
-    messenger.sendCmdArg(F("FUELCUTOFF2"));         //SPAD GUI Display name
-    messenger.sendCmdArg(F("SWITCH"));  // Type
-    messenger.sendCmdArg(F(""));            // Behaviour
+    messenger.sendCmdArg(21);                 // This is the button ID
+    messenger.sendCmdArg(F("PARKING_BRAKE")); // SPAD GUI Display name
+    messenger.sendCmdArg(F("SWITCH"));        // Type
+    messenger.sendCmdArg(F(""));              // Behaviour
     messenger.sendCmdEnd();
-*/
+
     //----- CREATE DISPLAY --------------------------------------------------------------------
     // 0,OUTPUT,1,dAltitude,DISPLAY,SPAD_DISPLAY,LENGTH=20,ROWS=4,WIDTH=350,HEIGHT=120
-
 
     //----- CREATE LED'S --------------------------------------------------------------------
 
     createAllLEDs();
 
     //_________________________________________________________________________________________
-    
+
     messenger.sendCmd(0, "CONFIG");
 
     return;

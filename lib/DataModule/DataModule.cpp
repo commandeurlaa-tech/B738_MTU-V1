@@ -1,63 +1,146 @@
 #include "Core.h"
 #include "Commands.h"
+#include "ServoModule.h"
 
-void onIncomingData() {
- int dataID = messenger.readInt32Arg();  // Data ID
+int Brakevalue = 0;
+float LeftBrake = 0.0;
+float RightBrake = 0.0;
+float ParkingBrake = 0.0;
+bool BothBrakesPreviouslyPressed = false;
+bool BrakeActionDone = false;
+bool ServoActive = false;
+unsigned long ServoStartTime = 0;
 
-  if (dataID == 20) {
-    float fldataVal = messenger.readFloatArg();  // Led value
+void checkBrakeCondition()
+{
+    bool BothBrakesPressed =
+        (LeftBrake >= 0.9 && RightBrake >= 0.9);
+
+    // Alleen reageren op de overgang:
+    // beide remmen waren los en zijn nu beide ingedrukt.
+    if (BothBrakesPressed && !BothBrakesPreviouslyPressed)
+    {
+        if (ParkingBrake >= 0.9)
+        {
+        //    messenger.sendCmd(kDebug,
+        //        "***** PARKING BRAKE RELEASE - SERVO *****");
+
+            myServo.write(0);
+
+            ServoActive = true;
+            ServoStartTime = millis();
+        }
+        else
+        {
+      //      messenger.sendCmd(kDebug,
+      //          "BOTH BRAKES PRESSED - PARKING BRAKE IS OFF");
+        }
+    }
+
+    BothBrakesPreviouslyPressed = BothBrakesPressed;
+}
+
+
+void updateServo()
+{
+    if (ServoActive)
+    {
+        if (millis() - ServoStartTime >= 400)
+        {
+            myServo.write(90);
+
+            ServoActive = false;
+
+          //  messenger.sendCmd(kDebug,
+           //     "***** SERVO TERUG NAAR 90 *****");
+        }
+    }
+}
+
+void onIncomingData()
+{
+
+  int dataID = messenger.readInt32Arg(); // Data ID
+//  messenger.sendCmd(kDebug, ">>>>> dataID: " + String(Brakevalue));
+  if (dataID == 20)
+  {
+    float fldataVal = messenger.readFloatArg(); // Led value
     fldataVal = fldataVal * 255;
     int32_t dataVal = round(fldataVal);
     analogWrite(9, dataVal);
-    if (dataVal >= 1) {
+    if (dataVal >= 1)
+    {
       digitalWrite(13, HIGH);
-    } else {
+    }
+    else
+    {
       digitalWrite(13, LOW);
     }
     int dimvalue = round(dataVal / 40);
-    if (olddimvalue != dimvalue) {
-    //  disp_IAS.setBrightness(dimvalue);
-     // disp_CRS_L.setBrightness(dimvalue);
-     // disp_HDG.setBrightness(dimvalue);
+    if (olddimvalue != dimvalue)
+    {
+      //  disp_IAS.setBrightness(dimvalue);
+      // disp_CRS_L.setBrightness(dimvalue);
+      // disp_HDG.setBrightness(dimvalue);
       olddimvalue = dimvalue;
     }
   }
 
-  if (dataID == 21) {
- int dimvalue = messenger.readInt32Arg();  // 0–255 (bijv)
+  if (dataID == 21)
+  {
+    int dimvalue = messenger.readInt32Arg(); // 0–255 (bijv)
 
-// PWM output
-analogWrite(4, dimvalue);
+    // PWM output
+    analogWrite(4, dimvalue);
 
-// schaal naar display brightness
-int brightness = round(dimvalue / 40);
+    // schaal naar display brightness
+    int brightness = round(dimvalue / 40);
 
-if (olddimvalue != brightness) {
- // disp_IAS.setBrightness(brightness);
-  //disp_CRS_L.setBrightness(brightness);
-  //disp_HDG.setBrightness(brightness);
-  olddimvalue = brightness;
-}
+    if (olddimvalue != brightness)
+    {
+      olddimvalue = brightness;
+    }
 
-digitalWrite(13, HIGH);
+    digitalWrite(13, HIGH);
   }
 
-  if (dataID == 22) {
+  if (dataID == 22)
+  {
     int Dimvalue = messenger.readInt32Arg();
-   //  messenger.sendCmd(kDebug, "STATS VLIEGTUIG" );
-   //  messenger.sendCmd(kDebug,  Dimvalue);
-    if (Dimvalue > 0 ) {
+    //  messenger.sendCmd(kDebug, "STATS VLIEGTUIG" );
+    //  messenger.sendCmd(kDebug,  Dimvalue);
+    if (Dimvalue > 0)
+    {
       analogWrite(9, 255);
-    /*  analogWrite(6, 255);
-      analogWrite(7, 255);
-      analogWrite(8, 255);
-      analogWrite(9, 255);
-      analogWrite(10, 255);
-      analogWrite(11, 255);
-      analogWrite(12, 255);
-      */
     }
   }
+if (dataID == kBrakeLeft)
+{
+    LeftBrake = messenger.readFloatArg();
 
-  
+  //  messenger.sendCmd(kDebug,
+   //     "LEFT BRAKE: " + String(LeftBrake, 3));
+
+    checkBrakeCondition();
+}
+
+if (dataID == kBrakeRight)
+{
+    RightBrake = messenger.readFloatArg();
+
+ //   messenger.sendCmd(kDebug,
+   //     "RIGHT BRAKE: " + String(RightBrake, 3));
+
+    checkBrakeCondition();
+}
+
+if (dataID == kParkingBrake)
+{
+    ParkingBrake = messenger.readFloatArg();
+
+   // messenger.sendCmd(kDebug,
+    //    "PARKING BRAKE: " + String(ParkingBrake, 3));
+
+   
+}
 }

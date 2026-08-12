@@ -13,5 +13,8 @@ enum
   kPaneldimmer1 = 20,
   KPanLightDim = 21,
   kGameState = 22,
-  
+  kBrakeLeft= 23,
+  kBrakeRight= 24,
+  kParkingBrake = 25,
+
 };

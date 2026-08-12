@@ -1,11 +1,11 @@
 #include "Core.h"
 #include "Commands.h"
+#include "ServoModule.h"
 
 
 CmdMessenger messenger(Serial);
 
 String authkey = "AUTHOR=2656302a-8aa7-4c93-bda6-7a12d883953e";
-
 bool isReady = false;
 bool isStarted = false;
 
@@ -22,7 +22,7 @@ void initHardware()
 
   Serial.begin(115200);
 
- 
+  initServo();
 
   for (int current_pin = 28; current_pin <= 47; current_pin++) // Get all the pins ready as output
   {
@@ -38,5 +38,4 @@ void initHardware()
     lastButtonStates[i] = 0;
   }
   delay(100);
-  
 }
