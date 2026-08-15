@@ -59,6 +59,21 @@ void updateServo()
 
 void onIncomingData()
 {
+/*// Voorbeeld: De PMDG simulator meldt dat de Autothrust (A/T) IS INGESCHAKELD
+// We zetten de motoren voor Throttle Links (0) en Rechts (1) 'aan' (spoelen bekrachtigd)
+setStepperEnable(0, true);
+setStepperEnable(1, true);
+
+// Voorbeeld: PMDG stuurt de nieuwe stand van de gashendels door
+setStepperTarget(0, 650); // Zet linker hendel op positie 650
+setStepperTarget(1, 620); // Zet rechter hendel op positie 620
+
+// Voorbeeld: De piloot zet de Autothrust handmatig UIT (A/T Disengage)
+// De motoren vallen direct stroomloos en zijn weer met de hand te bedienen
+setStepperEnable(0, false);
+setStepperEnable(1, false);
+*/
+
 
   int dataID = messenger.readInt32Arg(); // Data ID
 //  messenger.sendCmd(kDebug, ">>>>> dataID: " + String(Brakevalue));

@@ -2,22 +2,15 @@
 #define STEPPER_MODULE_H
 
 #include <Arduino.h>
-#include <AccelStepper.h>
 
-class StepperModule {
-private:
-    AccelStepper _stepper;
-    int _enaPin;
-    int _switchPin;
-    long _targetPos;
+const int NUM_STEPPERS = 6;
 
-public:
-    // Constructor waarin je de specifieke pinnen meegeeft per motor
-    StepperModule(int pulPin, int dirPin, int enaPin, int switchPin);
-    
-    void begin(float maxSpeed, float acceleration);
-    void update(); // Deze methode roep je straks continu aan in de hoofdloop
-    void setTarget(long position);
-};
+// Functies voor main.cpp
+void initSteppers();   // Start alle pinnen en motoren op
+void updateSteppers(); // Moet continu in de loop() draaien
+
+// Functies om de waarden vanuit de PMDG status / SpadModule bij te werken
+void setStepperTarget(int index, long position);
+void setStepperEnable(int index, bool enabled); // Schakel motor aan (vast) of uit (vrijloop)
 
 #endif
