@@ -139,7 +139,7 @@ messenger.sendCmdEnd();
     messenger.sendCmdStart(kRequest);
     messenger.sendCmdArg(F("INPUT"));
     messenger.sendCmdArg(10);               // This is the button ID
-    messenger.sendCmdArg(F("AT_DISARM_1")); // SPAD GUI Display name
+    messenger.sendCmdArg(F("10AT_DISARM_1")); // SPAD GUI Display name
     messenger.sendCmdArg(F("PUSHBUTTON"));  // Type
     messenger.sendCmdArg(F(""));            // Behaviour
     messenger.sendCmdEnd();
@@ -147,7 +147,7 @@ messenger.sendCmdEnd();
     messenger.sendCmdStart(kRequest);
     messenger.sendCmdArg(F("INPUT"));
     messenger.sendCmdArg(11);              // This is the button ID
-    messenger.sendCmdArg(F("TOGA_1"));     // SPAD GUI Display name
+    messenger.sendCmdArg(F("11TOGA_1"));     // SPAD GUI Display name
     messenger.sendCmdArg(F("PUSHBUTTON")); // Type
     messenger.sendCmdArg(F(""));           // Behaviour
     messenger.sendCmdEnd();
@@ -163,7 +163,7 @@ messenger.sendCmdEnd();
     messenger.sendCmdStart(kRequest);
     messenger.sendCmdArg(F("INPUT"));
     messenger.sendCmdArg(13);              // This is the button ID
-    messenger.sendCmdArg(F("TOGA_2"));     // SPAD GUI Display name
+    messenger.sendCmdArg(F("13TOGA_2"));     // SPAD GUI Display name
     messenger.sendCmdArg(F("PUSHBUTTON")); // Type
     messenger.sendCmdArg(F(""));           // Behaviour
     messenger.sendCmdEnd();
@@ -171,7 +171,7 @@ messenger.sendCmdEnd();
     messenger.sendCmdStart(kRequest);
     messenger.sendCmdArg(F("INPUT"));
     messenger.sendCmdArg(14);              // This is the button ID
-    messenger.sendCmdArg(F("TRIMSTOP1"));  // SPAD GUI Display name
+    messenger.sendCmdArg(F("14TRIMSTOP1"));  // SPAD GUI Display name
     messenger.sendCmdArg(F("PUSHBUTTON")); // Type
     messenger.sendCmdArg(F(""));           // Behaviour
     messenger.sendCmdEnd();
@@ -179,7 +179,7 @@ messenger.sendCmdEnd();
     messenger.sendCmdStart(kRequest);
     messenger.sendCmdArg(F("INPUT"));
     messenger.sendCmdArg(15);              // This is the button ID
-    messenger.sendCmdArg(F("TRIMSTOP2"));  // SPAD GUI Display name
+    messenger.sendCmdArg(F("15TRIMSTOP2"));  // SPAD GUI Display name
     messenger.sendCmdArg(F("PUSHBUTTON")); // Type
     messenger.sendCmdArg(F(""));           // Behaviour
     messenger.sendCmdEnd();
@@ -195,7 +195,7 @@ messenger.sendCmdEnd();
     messenger.sendCmdStart(kRequest);
     messenger.sendCmdArg(F("INPUT"));
     messenger.sendCmdArg(17);                 // This is the button ID
-    messenger.sendCmdArg(F("TRIMAUTOPILOT")); // SPAD GUI Display name
+    messenger.sendCmdArg(F("17TRIMAUTOPILOT")); // SPAD GUI Display name
     messenger.sendCmdArg(F("SWITCH"));        // Type
     messenger.sendCmdArg(F(""));              // Behaviour
     messenger.sendCmdEnd();
@@ -203,7 +203,7 @@ messenger.sendCmdEnd();
     messenger.sendCmdStart(kRequest);
     messenger.sendCmdArg(F("INPUT"));
     messenger.sendCmdArg(18);               // This is the button ID
-    messenger.sendCmdArg(F("HORN_CUTOUT")); // SPAD GUI Display name
+    messenger.sendCmdArg(F("18HORN_CUTOUT")); // SPAD GUI Display name
     messenger.sendCmdArg(F("PUSHBUTTON"));  // Type
     messenger.sendCmdArg(F(""));            // Behaviour
     messenger.sendCmdEnd();
@@ -211,7 +211,7 @@ messenger.sendCmdEnd();
     messenger.sendCmdStart(kRequest);
     messenger.sendCmdArg(F("INPUT"));
     messenger.sendCmdArg(19);               // This is the button ID
-    messenger.sendCmdArg(F("FUELCUTOFF2")); // SPAD GUI Display name
+    messenger.sendCmdArg(F("19FUELCUTOFF2")); // SPAD GUI Display name
     messenger.sendCmdArg(F("SWITCH"));      // Type
     messenger.sendCmdArg(F(""));            // Behaviour
     messenger.sendCmdEnd();
@@ -219,7 +219,7 @@ messenger.sendCmdEnd();
     messenger.sendCmdStart(kRequest);
     messenger.sendCmdArg(F("INPUT"));
     messenger.sendCmdArg(20);               // This is the button ID
-    messenger.sendCmdArg(F("FUELCUFOFF1")); // SPAD GUI Display name
+    messenger.sendCmdArg(F("20FUELCUFOFF1")); // SPAD GUI Display name
     messenger.sendCmdArg(F("SWITCH"));      // Type
     messenger.sendCmdArg(F(""));            // Behaviour
     messenger.sendCmdEnd();
@@ -227,7 +227,7 @@ messenger.sendCmdEnd();
     messenger.sendCmdStart(kRequest);
     messenger.sendCmdArg(F("INPUT"));
     messenger.sendCmdArg(21);                 // This is the button ID
-    messenger.sendCmdArg(F("PARKING_BRAKE")); // SPAD GUI Display name
+    messenger.sendCmdArg(F("21PARKING_BRAKE")); // SPAD GUI Display name
     messenger.sendCmdArg(F("SWITCH"));        // Type
     messenger.sendCmdArg(F(""));              // Behaviour
     messenger.sendCmdEnd();
