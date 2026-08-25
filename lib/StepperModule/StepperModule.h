@@ -5,12 +5,32 @@
 
 const int NUM_STEPPERS = 6;
 
-// Functies voor main.cpp
-void initSteppers();   // Start alle pinnen en motoren op
-void updateSteppers(); // Moet continu in de loop() draaien
+enum StepperIndex
+{
+    TRIM_NEEDLE_1 = 0,
+    TRIM_NEEDLE_2 = 1,
+    THROTTLE_2    = 2,
+    THROTTLE_1    = 3,
+    SPEED_BRAKE   = 4,
+    TRIM_WHEEL    = 5
+};
 
-// Functies om de waarden vanuit de PMDG status / SpadModule bij te werken
+struct StepperConfig
+{
+    long maxPosition;
+    float speed;
+    float acceleration;
+    bool gespiegeld;
+};
+
+void initSteppers();
+void updateSteppers();
+void updateTrimWheel(float trimValue);
+
 void setStepperTarget(int index, long position);
-void setStepperEnable(int index, bool enabled); // Schakel motor aan (vast) of uit (vrijloop)
+void setStepperEnable(int index, bool enabled);
+
+long getStepperPosition(int index);
+bool isStepperEnabled(int index);
 
 #endif

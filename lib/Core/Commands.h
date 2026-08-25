@@ -16,5 +16,6 @@ enum
   kBrakeLeft= 23,
   kBrakeRight= 24,
   kParkingBrake = 25,
-
+  kTrimWheel = 26,
+  kTrimIndicator = 27,
 };

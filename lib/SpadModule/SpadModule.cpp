@@ -132,6 +132,19 @@ messenger.sendCmdArg("SUBSCRIBE");
 messenger.sendCmdArg(kParkingBrake);
 messenger.sendCmdArg("SIMCONNECT:BRAKE PARKING POSITION");
 messenger.sendCmdEnd();
+
+messenger.sendCmdStart(kCommand);
+messenger.sendCmdArg("SUBSCRIBE");
+messenger.sendCmdArg(kTrimWheel);
+messenger.sendCmdArg("SIMCONNECT:ELEVATOR TRIM POSITION");
+messenger.sendCmdEnd();
+
+messenger.sendCmdStart(kCommand);
+messenger.sendCmdArg("SUBSCRIBE");
+messenger.sendCmdArg(kTrimIndicator);
+messenger.sendCmdArg("SIMCONNECT:ELEVATOR TRIM INDICATOR");
+messenger.sendCmdEnd();
+
     //----- CREATE ENCODERS --------------------------------------------------------------
 
     //----- CREATE BUTTONS-----------------------------------------------------

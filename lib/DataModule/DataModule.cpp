@@ -1,6 +1,7 @@
 #include "Core.h"
 #include "Commands.h"
 #include "ServoModule.h"
+#include "StepperModule.h"
 
 // ============================================================
 // BRAKE / PARKING BRAKE VARIABLES
@@ -10,14 +11,12 @@ float LeftBrake = 0.0;
 float RightBrake = 0.0;
 float ParkingBrake = 0.0;
 
-
 // ============================================================
 // BRAKE STATE
 // ============================================================
 
 bool BothBrakesPressed = false;
 bool BothBrakesPreviouslyPressed = false;
-
 
 // ============================================================
 // PARKING BRAKE STATE
@@ -29,7 +28,6 @@ bool ParkingBrakeActive = false;
 //        sinds het aantrekken van de parking brake losgelaten.
 //        Een volgende brake press mag dan de servo activeren.
 bool ParkingBrakeReleaseArmed = false;
-
 
 // ============================================================
 // SERVO
@@ -43,7 +41,6 @@ const int SERVO_HOME_POSITION = 90;
 
 const unsigned long SERVO_TIME = 400;
 
-
 // ============================================================
 // BRAKE THRESHOLDS
 // ============================================================
@@ -54,7 +51,6 @@ const unsigned long SERVO_TIME = 400;
 
 const float BRAKE_PRESS_THRESHOLD = 0.90;
 const float BRAKE_RELEASE_THRESHOLD = 0.70;
-
 
 // ============================================================
 // CHECK BRAKE CONDITION
@@ -87,7 +83,6 @@ void checkBrakeCondition()
               RightBrake < BRAKE_RELEASE_THRESHOLD);
     }
 
-
     // ========================================================
     // BEIDE REMMEN ZIJN NU OPNIEUW INGEDRUKT
     // ========================================================
@@ -117,7 +112,6 @@ void checkBrakeCondition()
             ServoActive = true;
             ServoStartTime = millis();
 
-
             // -----------------------------------------------
             // BELANGRIJK:
             //
@@ -125,7 +119,6 @@ void checkBrakeCondition()
             // -----------------------------------------------
 
             ParkingBrakeReleaseArmed = false;
-
 
             // Debug indien gewenst:
             /*
@@ -136,7 +129,6 @@ void checkBrakeCondition()
             */
         }
     }
-
 
     // ========================================================
     // BEIDE REMMEN ZIJN LOSGELATEN
@@ -157,7 +149,6 @@ void checkBrakeCondition()
         {
             ParkingBrakeReleaseArmed = true;
 
-
             // Debug indien gewenst:
             /*
             messenger.sendCmd(
@@ -168,11 +159,9 @@ void checkBrakeCondition()
         }
     }
 
-
     // Oude brake status bewaren
     BothBrakesPreviouslyPressed = BothBrakesPressed;
 }
-
 
 // ============================================================
 // SERVO UPDATE
@@ -188,7 +177,6 @@ void updateServo()
 
             ServoActive = false;
 
-
             // Debug indien gewenst:
             /*
             messenger.sendCmd(
@@ -200,7 +188,6 @@ void updateServo()
     }
 }
 
-
 // ============================================================
 // INCOMING DATA FROM SPAD.NEXT / MESSENGER
 // ============================================================
@@ -208,7 +195,6 @@ void updateServo()
 void onIncomingData()
 {
     int dataID = messenger.readInt32Arg();
-
 
     // ========================================================
     // DATA ID 20
@@ -241,7 +227,6 @@ void onIncomingData()
         }
     }
 
-
     // ========================================================
     // DATA ID 21
     // ========================================================
@@ -262,7 +247,6 @@ void onIncomingData()
         digitalWrite(13, HIGH);
     }
 
-
     // ========================================================
     // DATA ID 22
     // ========================================================
@@ -277,7 +261,6 @@ void onIncomingData()
         }
     }
 
-
     // ========================================================
     // LEFT BRAKE
     // ========================================================
@@ -288,7 +271,6 @@ void onIncomingData()
 
         checkBrakeCondition();
     }
-
 
     // ========================================================
     // RIGHT BRAKE
@@ -301,7 +283,6 @@ void onIncomingData()
         checkBrakeCondition();
     }
 
-
     // ========================================================
     // PARKING BRAKE
     // ========================================================
@@ -312,7 +293,6 @@ void onIncomingData()
 
         ParkingBrakeActive =
             (ParkingBrake >= 0.90);
-
 
         // ----------------------------------------------------
         // PARKING BRAKE WORDT AANGETROKKEN
@@ -345,5 +325,21 @@ void onIncomingData()
 
             ParkingBrakeReleaseArmed = false;
         }
+    }
+
+    // ========================================================
+    // TRIM WHEEL
+    // ========================================================
+
+    if (dataID == kTrimWheel)
+    {
+        float trimValue = messenger.readFloatArg();
+/*
+     String msg = "TRIM = ";
+        msg += String(trimValue, 6);
+
+        messenger.sendCmd(kDebug, msg);
+*/
+        updateTrimWheel(trimValue);
     }
 }
