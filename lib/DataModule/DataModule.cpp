@@ -334,12 +334,28 @@ void onIncomingData()
     if (dataID == kTrimWheel)
     {
         float trimValue = messenger.readFloatArg();
-/*
-     String msg = "TRIM = ";
-        msg += String(trimValue, 6);
+        /*
+             String msg = "TRIM = ";
+                msg += String(trimValue, 6);
 
-        messenger.sendCmd(kDebug, msg);
-*/
+                messenger.sendCmd(kDebug, msg);
+        */
         updateTrimWheel(trimValue);
+    }
+
+    // ========================================================
+    // TRIM INDICATOR
+    // ========================================================
+
+    if (dataID == kTrimIndicator)
+    {
+
+        float indicatorValue = messenger.readFloatArg();
+
+  String msg = "TI = ";
+    msg += String(indicatorValue, 6);
+    messenger.sendCmd(kDebug, msg);
+
+        updateTrimIndicator(indicatorValue);
     }
 }

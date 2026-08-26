@@ -26,11 +26,14 @@ struct StepperConfig
 void initSteppers();
 void updateSteppers();
 void updateTrimWheel(float trimValue);
+void updateTrimIndicator(float indicatorValue);
 
 void setStepperTarget(int index, long position);
 void setStepperEnable(int index, bool enabled);
 
 long getStepperPosition(int index);
 bool isStepperEnabled(int index);
+
+
 
 #endif

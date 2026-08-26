@@ -3,18 +3,87 @@
 #include <avr/interrupt.h>
 
 // ============================================================
+// TRIM INDICATOR / NEEDLE 1
+// ============================================================
+
+const int TRIM_INDICATOR = 0;
+
+const int TRIM_INDICATOR_HOME_PIN = 14;
+
+// Bij jouw Needle 1 is TRUE de juiste fysieke draairichting.
+const bool TRIM_INDICATOR_GESPIEGELD = true;
+
+// Schakelaar wordt iets vóór het echte fysieke nulpunt geraakt.
+const long TRIM_INDICATOR_HOME_OFFSET = 70;
+
+// Homing snelheid
+const float TRIM_INDICATOR_HOME_SPEED = 500.0;
+
+const long TRIM_INDICATOR_MAX_STEPS = 2000;
+// ============================================================
+// TIJDELIJKE KALIBRATIE
+// ============================================================
+//
+// Deze staat nu UIT.
+// De kalibratie van 650 stappen is afgerond.
+//
+
+const bool TRIM_INDICATOR_CALIBRATION = false;
+
+const long TRIM_INDICATOR_TEST_STEPS = 770;
+
+const float TRIM_INDICATOR_TEST_SPEED = 300.0;
+const float TRIM_INDICATOR_TEST_ACCEL = 500.0;
+
+// ============================================================
+// TRIM INDICATOR HOME STATE
+// ============================================================
+
+enum TrimIndicatorHomeState
+{
+    TRIM_HOME_IDLE,
+    TRIM_HOME_SEARCHING,
+    TRIM_HOME_OFFSET,
+    TRIM_HOME_DONE
+};
+
+TrimIndicatorHomeState trimIndicatorHomeState =
+    TRIM_HOME_IDLE;
+
+// ============================================================
+// TRIM INDICATOR DATA
+// ============================================================
+
+// Laatste door SPAD.next ontvangen waarde
+float lastTrimIndicatorValue = 0.0;
+
+bool trimIndicatorValueReceived = false;
+
+// Doelpositie in stepper-stappen
+long trimIndicatorTarget = 0;
+
+// ============================================================
+// FUNCTION PROTOTYPES
+// ============================================================
+
+void startTrimIndicatorCalibration();
+void startTrimIndicatorHoming();
+void updateTrimIndicatorHoming();
+void updateTrimIndicator(float indicatorValue);
+
+// ============================================================
 // TRIM WHEEL
 // ============================================================
 
 const float TRIM_WHEEL_SPEED = 10500.0;
 
-// Acceleratie in steps/sec per seconde
 const float TRIM_WHEEL_ACCEL = 80000.0;
 const float TRIM_WHEEL_DECEL = 50000.0;
 
 bool trimStopping = false;
+
 unsigned long trimStopUpdateTime = 0;
-// Direct stoppen bij loslaten
+
 const unsigned long TRIM_STOP_TIMEOUT_MS = 80;
 
 // ============================================================
@@ -35,7 +104,7 @@ const bool TRIM_WHEEL_GESPIEGELD = true;
 const float TRIM_DEADBAND = 0.000002;
 
 // ============================================================
-// PINNEN
+// PINNEN TRIM WHEEL
 // ============================================================
 
 const int TRIM_STEP_PIN = 39;
@@ -48,12 +117,13 @@ const int TRIM_ENA_PIN = 46;
 
 AccelStepper steppers[NUM_STEPPERS] =
     {
-        AccelStepper(AccelStepper::DRIVER, 29, 30),
-        AccelStepper(AccelStepper::DRIVER, 31, 32),
-        AccelStepper(AccelStepper::DRIVER, 33, 34),
-        AccelStepper(AccelStepper::DRIVER, 35, 36),
-        AccelStepper(AccelStepper::DRIVER, 37, 38),
-        AccelStepper(AccelStepper::DRIVER, 39, 40)};
+        AccelStepper(AccelStepper::DRIVER, 29, 30), // Trim Needle 1
+        AccelStepper(AccelStepper::DRIVER, 31, 32), // Trim Needle 2
+        AccelStepper(AccelStepper::DRIVER, 33, 34), // Throttle 2
+        AccelStepper(AccelStepper::DRIVER, 35, 36), // Throttle 1
+        AccelStepper(AccelStepper::DRIVER, 37, 38), // Speed Brake
+        AccelStepper(AccelStepper::DRIVER, 39, 40)  // Trim Wheel
+};
 
 const int enaPins[NUM_STEPPERS] =
     {
@@ -70,12 +140,13 @@ const int enaPins[NUM_STEPPERS] =
 
 const StepperConfig stepperConfig[NUM_STEPPERS] =
     {
-        {10000, 1000.0, 500.0, false},
-        {10000, 1000.0, 500.0, false},
-        {10000, 1000.0, 500.0, false},
-        {10000, 1000.0, 500.0, false},
-        {10000, 1000.0, 500.0, false},
-        {10000, 1000.0, 500.0, false}};
+        {10000, 1000.0, 500.0, false}, // Trim needle 1
+        {10000, 1000.0, 500.0, false}, // Trim needle 2
+        {10000, 1000.0, 500.0, false}, // Throttle 2
+        {10000, 1000.0, 500.0, false}, // Throttle 1
+        {10000, 1000.0, 500.0, false}, // Speed Brake
+        {10000, 1000.0, 500.0, false}  // Trim Wheel
+};
 
 // ============================================================
 // STATUS
@@ -85,7 +156,7 @@ long targetPositions[NUM_STEPPERS] = {0};
 
 bool stepperEnabled[NUM_STEPPERS] =
     {
-        false,
+        true, // Trim Needle 1
         false,
         false,
         false,
@@ -93,7 +164,7 @@ bool stepperEnabled[NUM_STEPPERS] =
         false};
 
 // ============================================================
-// TRIM STATUS
+// TRIM WHEEL STATUS
 // ============================================================
 
 float oldTrim = 0.0;
@@ -101,22 +172,24 @@ float oldTrim = 0.0;
 bool trimInitialized = false;
 
 volatile bool trimTimerRunning = false;
+
 volatile bool trimStepHigh = false;
+
 volatile bool trimTimerDirectionPositive = false;
 
 volatile long trimWheelPosition = 0;
 
-// Huidige snelheid van het trimwiel
+// Huidige snelheid trim wheel
 volatile float trimCurrentSpeed = 0.0;
 
-// Tijdstip laatste trimdata
+// Laatste trimdata
 unsigned long lastTrimUpdateTime = 0;
 
-// Tijdstip laatste acceleratie-update
+// Laatste acceleratie-update
 unsigned long lastTrimAccelerationUpdate = 0;
 
 // ============================================================
-// TIMER2 FREQUENTIE INSTELLEN
+// TIMER2 FREQUENTIE
 // ============================================================
 //
 // Timer2:
@@ -124,16 +197,7 @@ unsigned long lastTrimAccelerationUpdate = 0;
 // prescaler = 8
 // timer clock = 2 MHz
 //
-// We gebruiken twee interrupts per STEP.
-//
-// gewenste STEP-frequentie:
-// bijvoorbeeld 10.000 steps/sec
-//
-// interrupt frequentie:
-// 20.000 Hz
-//
-// OCR2A:
-// 2.000.000 / 20.000 - 1 = 99
+// Twee interrupts per volledige STEP.
 //
 // ============================================================
 
@@ -172,7 +236,6 @@ void startTrimTimer(bool positiveDirection)
 {
     noInterrupts();
 
-    // Richting
     digitalWrite(
         TRIM_DIR_PIN,
         positiveDirection ? HIGH : LOW);
@@ -180,15 +243,15 @@ void startTrimTimer(bool positiveDirection)
     trimTimerDirectionPositive =
         positiveDirection;
 
-    // STEP laag
-    digitalWrite(TRIM_STEP_PIN, LOW);
+    digitalWrite(
+        TRIM_STEP_PIN,
+        LOW);
 
     trimStepHigh = false;
 
-    // Begin op lage snelheid
+    // Start langzaam
     trimCurrentSpeed = 1000.0;
 
-    // Timer instellen op startsnelheid
     float interruptFrequency =
         trimCurrentSpeed * 2.0;
 
@@ -215,7 +278,7 @@ void startTrimTimer(bool positiveDirection)
     // Prescaler 8
     TCCR2B |= (1 << CS21);
 
-    // Compare interrupt
+    // Compare A interrupt
     TIMSK2 |= (1 << OCIE2A);
 
     trimTimerRunning = true;
@@ -243,7 +306,7 @@ void stopTrimTimer()
         (1 << CS21) |
         (1 << CS20));
 
-    // STEP gegarandeerd LOW
+    // STEP LOW
     PORTG &= ~(1 << PG2);
 
     trimStepHigh = false;
@@ -282,7 +345,6 @@ ISR(TIMER2_COMPA_vect)
             trimWheelPosition--;
         }
     }
-
     // STEP LOW
     else
     {
@@ -298,6 +360,10 @@ ISR(TIMER2_COMPA_vect)
 
 void initSteppers()
 {
+    // --------------------------------------------------------
+    // Trim wheel pinnen
+    // --------------------------------------------------------
+
     pinMode(TRIM_STEP_PIN, OUTPUT);
     pinMode(TRIM_DIR_PIN, OUTPUT);
     pinMode(TRIM_ENA_PIN, OUTPUT);
@@ -306,7 +372,10 @@ void initSteppers()
     digitalWrite(TRIM_DIR_PIN, LOW);
     digitalWrite(TRIM_ENA_PIN, HIGH);
 
+    // --------------------------------------------------------
     // Timer2 uit
+    // --------------------------------------------------------
+
     TCCR2A = 0;
     TCCR2B = 0;
 
@@ -314,9 +383,14 @@ void initSteppers()
 
     TIMSK2 &= ~(1 << OCIE2A);
 
+    // --------------------------------------------------------
+    // Alle steppers initialiseren
+    // --------------------------------------------------------
+
     for (int i = 0; i < NUM_STEPPERS; i++)
     {
-        steppers[i].setEnablePin(enaPins[i]);
+        steppers[i].setEnablePin(
+            enaPins[i]);
 
         steppers[i].setPinsInverted(
             false,
@@ -345,6 +419,10 @@ void initSteppers()
         steppers[i].disableOutputs();
     }
 
+    // --------------------------------------------------------
+    // Trim status
+    // --------------------------------------------------------
+
     oldTrim = 0.0;
 
     trimInitialized = false;
@@ -362,171 +440,263 @@ void initSteppers()
     lastTrimUpdateTime = millis();
 
     lastTrimAccelerationUpdate = millis();
+
+    // --------------------------------------------------------
+    // Trim indicator status
+    // --------------------------------------------------------
+
+    lastTrimIndicatorValue = 0.0;
+
+    trimIndicatorValueReceived = false;
+
+    trimIndicatorTarget = 0;
+
+    // --------------------------------------------------------
+    // Start homing
+    // --------------------------------------------------------
+
+    startTrimIndicatorHoming();
 }
+
 // ============================================================
-// START DECELERATION
+// START DECELERATION TRIM WHEEL
 // ============================================================
+
 void startTrimDeceleration()
 {
-    if (!trimTimerRunning || trimStopping)
+    if (!trimTimerRunning ||
+        trimStopping)
+    {
         return;
+    }
 
     trimStopping = true;
-    trimStopUpdateTime = millis();
+
+    trimStopUpdateTime =
+        millis();
 }
+
 // ============================================================
-// UPDATE
+// UPDATE STEPPERS
 // ============================================================
 
 void updateSteppers()
 {
+    // ========================================================
+    // TRIM INDICATOR HOMING
+    // ========================================================
+
+    if (trimIndicatorHomeState != TRIM_HOME_DONE &&
+        trimIndicatorHomeState != TRIM_HOME_IDLE)
+    {
+        updateTrimIndicatorHoming();
+
+        return;
+    }
+
+    // ========================================================
+    // ALLE STEPPERS
+    // ========================================================
+
     for (int i = 0; i < NUM_STEPPERS; i++)
     {
-        if (stepperEnabled[i])
+        if (!stepperEnabled[i])
         {
-            steppers[i].enableOutputs();
-
-            // =================================================
-            // TRIM WHEEL
-            // =================================================
-
-            if (i == TRIM_WHEEL)
+            if (i == TRIM_WHEEL &&
+                trimTimerRunning)
             {
-                // ------------------------------------------------
-                // Acceleratie
-                // ------------------------------------------------
-
-                if (trimTimerRunning)
-                {
-                    unsigned long now = millis();
-
-                    unsigned long elapsed =
-                        now -
-                        lastTrimAccelerationUpdate;
-
-                    if (elapsed > 0 && !trimStopping)
-                    {
-                        lastTrimAccelerationUpdate =
-                            now;
-
-                        float increase =
-                            (TRIM_WHEEL_ACCEL *
-                             elapsed) /
-                            1000.0;
-
-                        noInterrupts();
-
-                        trimCurrentSpeed +=
-                            increase;
-
-                        if (trimCurrentSpeed >
-                            TRIM_WHEEL_SPEED)
-                        {
-                            trimCurrentSpeed =
-                                TRIM_WHEEL_SPEED;
-                        }
-
-                        float speed =
-                            trimCurrentSpeed;
-
-                        interrupts();
-
-                        setTrimTimerSpeed(speed);
-                    }
-
-                    // ------------------------------------------------
-                    // Geen nieuwe data?
-                    // ------------------------------------------------
-
-                    if (now -
-                            lastTrimUpdateTime >=
-                        TRIM_STOP_TIMEOUT_MS)
-                    {
-                        startTrimDeceleration();
-                    }
-                    // ------------------------------------------------
-                    // ZACHT AFREMMEN NA LOSLATEN
-                    // ------------------------------------------------
-
-                    if (trimStopping)
-                    {
-                        unsigned long stopNow = millis();
-
-                        // Iedere 5 ms snelheid aanpassen
-                        if (stopNow - trimStopUpdateTime >= 5)
-                        {
-                            unsigned long elapsed =
-                                stopNow - trimStopUpdateTime;
-
-                            trimStopUpdateTime = stopNow;
-
-                            float decrease =
-                                (TRIM_WHEEL_DECEL * elapsed) /
-                                1000.0;
-
-                            noInterrupts();
-
-                            trimCurrentSpeed -= decrease;
-
-                            if (trimCurrentSpeed <= 0.0)
-                            {
-                                trimCurrentSpeed = 0.0;
-                            }
-
-                            float speed =
-                                trimCurrentSpeed;
-
-                            interrupts();
-
-                            if (speed > 0.0)
-                            {
-                                setTrimTimerSpeed(speed);
-                            }
-                            else
-                            {
-                                stopTrimTimer();
-
-                                trimStopping = false;
-                            }
-                        }
-                    }
-                }
-            }
-
-            // =================================================
-            // ANDERE STEPPERS
-            // =================================================
-
-            else
-            {
-                long target =
-                    targetPositions[i];
-
-                if (stepperConfig[i].gespiegeld)
-                {
-                    target =
-                        stepperConfig[i].maxPosition -
-                        target;
-                }
-
-                steppers[i].moveTo(target);
-
-                steppers[i].run();
-            }
-        }
-
-        else
-        {
-            if (i == TRIM_WHEEL)
-            {
-                if (trimTimerRunning)
-                {
-                    stopTrimTimer();
-                }
+                stopTrimTimer();
             }
 
             steppers[i].disableOutputs();
+
+            continue;
         }
+
+        steppers[i].enableOutputs();
+
+        // ====================================================
+        // TRIM WHEEL
+        // ====================================================
+
+        if (i == TRIM_WHEEL)
+        {
+            if (!trimTimerRunning)
+            {
+                continue;
+            }
+
+            unsigned long now =
+                millis();
+
+            // ------------------------------------------------
+            // ACCELERATIE
+            // ------------------------------------------------
+
+            unsigned long elapsed =
+                now -
+                lastTrimAccelerationUpdate;
+
+            if (elapsed > 0 &&
+                !trimStopping)
+            {
+                lastTrimAccelerationUpdate =
+                    now;
+
+                float increase =
+                    (TRIM_WHEEL_ACCEL *
+                     elapsed) /
+                    1000.0;
+
+                noInterrupts();
+
+                trimCurrentSpeed +=
+                    increase;
+
+                if (trimCurrentSpeed >
+                    TRIM_WHEEL_SPEED)
+                {
+                    trimCurrentSpeed =
+                        TRIM_WHEEL_SPEED;
+                }
+
+                float speed =
+                    trimCurrentSpeed;
+
+                interrupts();
+
+                setTrimTimerSpeed(speed);
+            }
+
+            // ------------------------------------------------
+            // GEEN NIEUWE TRIMDATA
+            // ------------------------------------------------
+
+            if (now -
+                    lastTrimUpdateTime >=
+                TRIM_STOP_TIMEOUT_MS)
+            {
+                startTrimDeceleration();
+            }
+
+            // ------------------------------------------------
+            // ZACHTE DECELERATIE
+            // ------------------------------------------------
+
+            if (trimStopping)
+            {
+                unsigned long stopNow =
+                    millis();
+
+                if (stopNow -
+                        trimStopUpdateTime >=
+                    5)
+                {
+                    unsigned long stopElapsed =
+                        stopNow -
+                        trimStopUpdateTime;
+
+                    trimStopUpdateTime =
+                        stopNow;
+
+                    float decrease =
+                        (TRIM_WHEEL_DECEL *
+                         stopElapsed) /
+                        1000.0;
+
+                    noInterrupts();
+
+                    trimCurrentSpeed -=
+                        decrease;
+
+                    if (trimCurrentSpeed <= 0.0)
+                    {
+                        trimCurrentSpeed =
+                            0.0;
+                    }
+
+                    float speed =
+                        trimCurrentSpeed;
+
+                    interrupts();
+
+                    if (speed > 0.0)
+                    {
+                        setTrimTimerSpeed(
+                            speed);
+                    }
+                    else
+                    {
+                        stopTrimTimer();
+
+                        trimStopping =
+                            false;
+                    }
+                }
+            }
+
+            continue;
+        }
+
+        // ====================================================
+        // TRIM INDICATOR / NEEDLE 1
+        // ====================================================
+
+        if (i == TRIM_INDICATOR)
+{
+    // ========================================================
+    // TIJDELIJKE KALIBRATIE
+    // ========================================================
+
+    if (TRIM_INDICATOR_CALIBRATION)
+    {
+        steppers[TRIM_INDICATOR].run();
+
+        continue;
+    }
+
+    // ========================================================
+    // NORMALE AANSTURING VIA kTrimIndicator
+    // ========================================================
+
+    if (!trimIndicatorValueReceived)
+    {
+        continue;
+    }
+
+    if (trimIndicatorHomeState !=
+        TRIM_HOME_DONE)
+    {
+        continue;
+    }
+
+    steppers[TRIM_INDICATOR]
+        .moveTo(
+            trimIndicatorTarget);
+
+    steppers[TRIM_INDICATOR]
+        .run();
+
+    continue;
+}
+
+        // ====================================================
+        // ANDERE STEPPERS
+        // ====================================================
+
+        long target =
+            targetPositions[i];
+
+        if (stepperConfig[i].gespiegeld)
+        {
+            target =
+                stepperConfig[i].maxPosition -
+                target;
+        }
+
+        steppers[i].moveTo(target);
+
+        steppers[i].run();
     }
 }
 
@@ -545,7 +715,9 @@ void setStepperTarget(
     }
 
     if (position < 0)
+    {
         position = 0;
+    }
 
     if (position >
         stepperConfig[index].maxPosition)
@@ -554,7 +726,8 @@ void setStepperTarget(
             stepperConfig[index].maxPosition;
     }
 
-    targetPositions[index] = position;
+    targetPositions[index] =
+        position;
 }
 
 // ============================================================
@@ -571,7 +744,8 @@ void setStepperEnable(
         return;
     }
 
-    stepperEnabled[index] = enabled;
+    stepperEnabled[index] =
+        enabled;
 
     if (enabled)
     {
@@ -592,7 +766,8 @@ void setStepperEnable(
 // POSITIE
 // ============================================================
 
-long getStepperPosition(int index)
+long getStepperPosition(
+    int index)
 {
     if (index < 0 ||
         index >= NUM_STEPPERS)
@@ -614,14 +789,16 @@ long getStepperPosition(int index)
         return position;
     }
 
-    return steppers[index].currentPosition();
+    return steppers[index]
+        .currentPosition();
 }
 
 // ============================================================
 // ENABLE STATUS
 // ============================================================
 
-bool isStepperEnabled(int index)
+bool isStepperEnabled(
+    int index)
 {
     if (index < 0 ||
         index >= NUM_STEPPERS)
@@ -636,9 +813,11 @@ bool isStepperEnabled(int index)
 // TRIM WHEEL
 // ============================================================
 
-void updateTrimWheel(float trimValue)
+void updateTrimWheel(
+    float trimValue)
 {
-    unsigned long now = millis();
+    unsigned long now =
+        millis();
 
     // ========================================================
     // EERSTE WAARDE
@@ -646,11 +825,14 @@ void updateTrimWheel(float trimValue)
 
     if (!trimInitialized)
     {
-        oldTrim = trimValue;
+        oldTrim =
+            trimValue;
 
-        trimInitialized = true;
+        trimInitialized =
+            true;
 
-        lastTrimUpdateTime = now;
+        lastTrimUpdateTime =
+            now;
 
         return;
     }
@@ -658,30 +840,24 @@ void updateTrimWheel(float trimValue)
     // ========================================================
     // WATCHDOG RESET
     // ========================================================
-    //
-    // Er komt nog steeds trimdata binnen.
-    // Dus het wiel mag blijven draaien.
-    //
 
-    lastTrimUpdateTime = now;
+    lastTrimUpdateTime =
+        now;
 
     // ========================================================
-    // VERSCHIL BEREKENEN
+    // VERSCHIL
     // ========================================================
 
     float delta =
-        trimValue - oldTrim;
+        trimValue -
+        oldTrim;
 
-    // Nieuwe waarde bewaren
-    oldTrim = trimValue;
+    oldTrim =
+        trimValue;
 
     // ========================================================
     // DEADBAND
     // ========================================================
-    //
-    // Heel kleine veranderingen negeren.
-    // Dit voorkomt onnodig starten/stoppen.
-    //
 
     if (delta > -TRIM_DEADBAND &&
         delta < TRIM_DEADBAND)
@@ -690,7 +866,7 @@ void updateTrimWheel(float trimValue)
     }
 
     // ========================================================
-    // RICHTING BEPALEN
+    // RICHTING
     // ========================================================
 
     bool positiveDirection =
@@ -707,21 +883,21 @@ void updateTrimWheel(float trimValue)
     }
 
     // ========================================================
-    // MOTOR ENABLE
+    // ENABLE
     // ========================================================
 
-    steppers[TRIM_WHEEL].enableOutputs();
+    steppers[TRIM_WHEEL]
+        .enableOutputs();
 
     // ========================================================
-    // BELANGRIJK:
-    // ALS HET WIEL AAN HET AFREMMEN WAS,
-    // DAN ANNULEREN WE DE STOP.
+    // DECELERATIE ANNULEREN
     // ========================================================
 
-    trimStopping = false;
+    trimStopping =
+        false;
 
     // ========================================================
-    // TIMER NOG NIET ACTIEF
+    // TIMER STARTEN
     // ========================================================
 
     if (!trimTimerRunning)
@@ -733,7 +909,7 @@ void updateTrimWheel(float trimValue)
     }
 
     // ========================================================
-    // RICHTING VERANDERD
+    // RICHTING WIJZIGEN
     // ========================================================
 
     if (trimTimerDirectionPositive !=
@@ -753,3 +929,573 @@ void updateTrimWheel(float trimValue)
                 : LOW);
     }
 }
+
+// ============================================================
+// START TRIM INDICATOR HOMING
+// ============================================================
+
+void startTrimIndicatorHoming()
+{
+    trimIndicatorHomeState =
+        TRIM_HOME_SEARCHING;
+
+    steppers[TRIM_INDICATOR]
+        .enableOutputs();
+
+    steppers[TRIM_INDICATOR]
+        .setMaxSpeed(
+            TRIM_INDICATOR_HOME_SPEED);
+
+    // --------------------------------------------------------
+    // TRUE = juiste richting naar HOME
+    // --------------------------------------------------------
+
+    if (TRIM_INDICATOR_GESPIEGELD)
+    {
+        steppers[TRIM_INDICATOR]
+            .setSpeed(
+                TRIM_INDICATOR_HOME_SPEED);
+    }
+    else
+    {
+        steppers[TRIM_INDICATOR]
+            .setSpeed(
+                -TRIM_INDICATOR_HOME_SPEED);
+    }
+}
+
+// ============================================================
+// UPDATE TRIM INDICATOR HOMING
+// ============================================================
+
+void updateTrimIndicatorHoming()
+{
+    // ========================================================
+    // IDLE
+    // ========================================================
+
+    if (trimIndicatorHomeState ==
+        TRIM_HOME_IDLE)
+    {
+        return;
+    }
+
+    // ========================================================
+    // HOME ZOEKEN
+    // ========================================================
+
+    if (trimIndicatorHomeState ==
+        TRIM_HOME_SEARCHING)
+    {
+        // INPUT_PULLUP:
+        //
+        // HIGH = niet actief
+        // LOW  = actief
+        //
+
+        if (digitalRead(
+                TRIM_INDICATOR_HOME_PIN) == LOW)
+        {
+            // ------------------------------------------------
+            // HOME GEVONDEN
+            // ------------------------------------------------
+
+            steppers[TRIM_INDICATOR]
+                .setSpeed(0);
+
+            // Schakelaarpositie tijdelijk als 0
+            steppers[TRIM_INDICATOR]
+                .setCurrentPosition(0);
+
+            // ------------------------------------------------
+            // HOME OFFSET
+            // ------------------------------------------------
+
+            long offset =
+                TRIM_INDICATOR_GESPIEGELD
+                    ? TRIM_INDICATOR_HOME_OFFSET
+                    : -TRIM_INDICATOR_HOME_OFFSET;
+
+            steppers[TRIM_INDICATOR]
+                .moveTo(offset);
+
+            trimIndicatorHomeState =
+                TRIM_HOME_OFFSET;
+
+            return;
+        }
+
+        // ----------------------------------------------------
+        // Nog niet bij HOME
+        // ----------------------------------------------------
+
+        steppers[TRIM_INDICATOR]
+            .runSpeed();
+
+        return;
+    }
+
+    // ========================================================
+    // HOME OFFSET UITVOEREN
+    // ========================================================
+
+    if (trimIndicatorHomeState ==
+        TRIM_HOME_OFFSET)
+    {
+        steppers[TRIM_INDICATOR]
+            .run();
+
+        if (steppers[TRIM_INDICATOR]
+                .distanceToGo() == 0)
+        {
+            // ------------------------------------------------
+            // DIT IS HET ECHTE SOFTWARE NULPUNT
+            // ------------------------------------------------
+
+            steppers[TRIM_INDICATOR]
+                .setCurrentPosition(0);
+
+            // ------------------------------------------------
+            // NORMALE INSTELLINGEN HERSTELLEN
+            // ------------------------------------------------
+
+            steppers[TRIM_INDICATOR]
+                .setMaxSpeed(
+                    stepperConfig[TRIM_INDICATOR].speed);
+
+            steppers[TRIM_INDICATOR]
+                .setAcceleration(
+                    stepperConfig[TRIM_INDICATOR].acceleration);
+
+            steppers[TRIM_INDICATOR]
+                .setSpeed(0);
+
+            // ------------------------------------------------
+            // HOMING KLAAR
+            // ------------------------------------------------
+
+            trimIndicatorHomeState =
+                TRIM_HOME_DONE;
+
+            // ------------------------------------------------
+            // TIJDELIJKE KALIBRATIE
+            // ------------------------------------------------
+
+            if (TRIM_INDICATOR_CALIBRATION)
+            {
+                startTrimIndicatorCalibration();
+            }
+            else
+            {
+                // De outputs mogen uit.
+                // updateSteppers() zet ze weer aan
+                // zodra er een TI-waarde beschikbaar is.
+                steppers[TRIM_INDICATOR]
+                    .disableOutputs();
+            }
+
+            return;
+        }
+
+        return;
+    }
+}
+
+// ============================================================
+// TIJDELIJKE KALIBRATIE
+// ============================================================
+
+void startTrimIndicatorCalibration()
+{
+    if (!TRIM_INDICATOR_CALIBRATION)
+    {
+        return;
+    }
+
+    steppers[TRIM_INDICATOR]
+        .enableOutputs();
+
+    steppers[TRIM_INDICATOR]
+        .setMaxSpeed(
+            TRIM_INDICATOR_TEST_SPEED);
+
+    steppers[TRIM_INDICATOR]
+        .setAcceleration(
+            TRIM_INDICATOR_TEST_ACCEL);
+
+    // --------------------------------------------------------
+    // Vanaf fysiek 0 naar de andere kant dan HOME
+    // --------------------------------------------------------
+
+    long calibrationTarget =
+        TRIM_INDICATOR_GESPIEGELD
+            ? -TRIM_INDICATOR_TEST_STEPS
+            : TRIM_INDICATOR_TEST_STEPS;
+
+    steppers[TRIM_INDICATOR]
+        .moveTo(
+            calibrationTarget);
+}
+// ============================================================
+// FYSIEKE INDICATORSTAND -> STEPPERSTAPPEN
+// ============================================================
+//
+// Mechanische kalibratie:
+//
+// 100 stappen -> 2.5
+// 200 stappen -> 3.0
+// 300 stappen -> 8.5
+// 400 stappen -> 9.8
+// 500 stappen -> 12.5
+// 600 stappen -> 15.2
+// 650 stappen -> 16.5
+// 700 stappen -> 18.0
+//
+// Deze functie interpoleert tussen de gemeten punten.
+// ============================================================
+
+long physicalIndicatorToSteps(float physicalPosition)
+{
+    if (physicalPosition <= 0.0)
+    {
+        return 0;
+    }
+
+    if (physicalPosition <= 2.5)
+    {
+        float fraction =
+            physicalPosition / 2.5;
+
+        return (long)(
+            fraction * 100.0 + 0.5);
+    }
+
+    if (physicalPosition <= 3.0)
+    {
+        float fraction =
+            (physicalPosition - 2.5) /
+            (3.0 - 2.5);
+
+        return (long)(
+            100.0 +
+            fraction * (200.0 - 100.0) +
+            0.5);
+    }
+
+    if (physicalPosition <= 8.5)
+    {
+        float fraction =
+            (physicalPosition - 3.0) /
+            (8.5 - 3.0);
+
+        return (long)(
+            200.0 +
+            fraction * (300.0 - 200.0) +
+            0.5);
+    }
+
+    if (physicalPosition <= 9.8)
+    {
+        float fraction =
+            (physicalPosition - 8.5) /
+            (9.8 - 8.5);
+
+        return (long)(
+            300.0 +
+            fraction * (400.0 - 300.0) +
+            0.5);
+    }
+
+    if (physicalPosition <= 12.5)
+    {
+        float fraction =
+            (physicalPosition - 9.8) /
+            (12.5 - 9.8);
+
+        return (long)(
+            400.0 +
+            fraction * (500.0 - 400.0) +
+            0.5);
+    }
+
+    if (physicalPosition <= 15.2)
+    {
+        float fraction =
+            (physicalPosition - 12.5) /
+            (15.2 - 12.5);
+
+        return (long)(
+            500.0 +
+            fraction * (600.0 - 500.0) +
+            0.5);
+    }
+
+    if (physicalPosition <= 16.5)
+    {
+        float fraction =
+            (physicalPosition - 15.2) /
+            (16.5 - 15.2);
+
+        return (long)(
+            600.0 +
+            fraction * (650.0 - 600.0) +
+            0.5);
+    }
+
+    if (physicalPosition <= 18.0)
+    {
+        float fraction =
+            (physicalPosition - 16.5) /
+            (18.0 - 16.5);
+
+        return (long)(
+            650.0 +
+            fraction * (700.0 - 650.0) +
+            0.5);
+    }
+
+    return 700;
+}
+
+
+// ============================================================
+// TRIM INDICATOR
+// ============================================================
+//
+// kTrimIndicator = SIMCONNECT:ELEVATOR TRIM INDICATOR
+// Eenheid = radialen
+//
+// Gekoppelde meetpunten:
+//
+// TI 0.3421610 -> fysieke 4.5
+// TI 0.4149358 -> fysieke 6.0
+// TI 0.4940770 -> fysieke 8.0
+// TI 0.8643216 -> fysieke 15.0
+//
+// ============================================================
+
+void updateTrimIndicator(float indicatorValue)
+{
+    // ========================================================
+    // LAATSTE TI-WAARDE OPSLAAN
+    // ========================================================
+
+    lastTrimIndicatorValue =
+        indicatorValue;
+
+    trimIndicatorValueReceived =
+        true;
+
+
+    // ========================================================
+    // TIJDENS HOMING GEEN BEWEGING
+    // ========================================================
+
+    if (trimIndicatorHomeState !=
+        TRIM_HOME_DONE)
+    {
+        return;
+    }
+
+
+    // ========================================================
+    // TI-MEETPUNTEN
+    //
+    // TI waarde -> cockpit trimstand
+    // ========================================================
+
+    const float tiValues[15] =
+    {
+        -0.2269650,   // 1
+        -0.1369530,   // 2
+        -0.0538750,   // 3
+         0.0186820,   // 4
+         0.0987340,   // 5
+         0.1942440,   // 6
+         0.2679350,   // 7
+         0.3421610,   // 8
+         0.4149350,   // 9
+         0.4940770,   // 10
+         0.5665200,   // 11
+         0.6514510,   // 12
+         0.7172933,   // 13
+         0.7884810,   // 14
+         0.8643210    // 15
+    };
+
+
+    // ========================================================
+    // STEPPER-MEETPUNTEN
+    //
+    // Fysieke cockpitstand -> echte stappen
+    // ========================================================
+
+    const long stepValues[18] =
+    {
+        0,    // 0
+        164,  // 1
+        195,  // 2
+        229,  // 3
+        267,  // 4
+        305,  // 5
+        345,  // 6
+        379,  // 7
+        417,  // 8
+        460,  // 9
+        505,  // 10
+        540,  // 11
+        575,  // 12
+        610,  // 13
+        645,  // 14
+        680,  // 15
+        725,  // 16
+        770   // 17
+    };
+
+
+    // ========================================================
+    // TRIMSTAND BEPALEN
+    // ========================================================
+
+    float trimPosition;
+
+
+    // Onderste meetpunt
+    if (indicatorValue <= tiValues[0])
+    {
+        // Onder trim 1 trekken we lineair terug
+        // naar trim 0.
+
+        float fraction =
+            (indicatorValue + 0.3000000) /
+            (tiValues[0] + 0.3000000);
+
+        if (fraction < 0.0)
+            fraction = 0.0;
+
+        trimPosition =
+            fraction * 1.0;
+    }
+
+    // Bovenste meetpunt
+    else if (indicatorValue >= tiValues[14])
+    {
+        // Boven trim 15 trekken we door tot trim 17.
+        //
+        // We hebben geen afzonderlijke TI-metingen voor
+        // 16 en 17, dus voorlopig lineair doortrekken.
+
+        float fraction =
+            (indicatorValue - tiValues[14]) /
+            (1.0 - tiValues[14]);
+
+        if (fraction > 1.0)
+            fraction = 1.0;
+
+        trimPosition =
+            15.0 +
+            fraction * 2.0;
+    }
+
+    // Tussen twee bekende TI-meetpunten
+    else
+    {
+        int segment = 0;
+
+        while (segment < 14 &&
+               indicatorValue > tiValues[segment + 1])
+        {
+            segment++;
+        }
+
+        float fraction =
+            (indicatorValue -
+             tiValues[segment]) /
+            (tiValues[segment + 1] -
+             tiValues[segment]);
+
+        trimPosition =
+            (float)(segment + 1) +
+            fraction;
+    }
+
+
+    // ========================================================
+    // TRIMPOSITIE BEGRENZEN
+    // ========================================================
+
+    if (trimPosition < 0.0)
+    {
+        trimPosition = 0.0;
+    }
+
+    if (trimPosition > 17.0)
+    {
+        trimPosition = 17.0;
+    }
+
+
+    // ========================================================
+    // TRIMSTAND -> STEPPERSTAPPEN
+    // ========================================================
+
+    if (trimPosition <= 0.0)
+    {
+        trimIndicatorTarget = 0;
+    }
+    else if (trimPosition >= 17.0)
+    {
+        trimIndicatorTarget = 770;
+    }
+    else
+    {
+        int lower =
+            (int)trimPosition;
+
+        float fraction =
+            trimPosition -
+            (float)lower;
+
+        trimIndicatorTarget =
+            (long)(
+                stepValues[lower] +
+                fraction *
+                (stepValues[lower + 1] -
+                 stepValues[lower]) +
+                0.5);
+    }
+
+
+    // ========================================================
+    // FYSIEKE RICHTING
+    //
+    // TRUE = juiste richting voor Needle 1
+    // ========================================================
+
+    if (TRIM_INDICATOR_GESPIEGELD)
+    {
+        trimIndicatorTarget =
+            -trimIndicatorTarget;
+    }
+
+
+    // ========================================================
+    // STEPPER ACTIVEREN
+    // ========================================================
+
+    stepperEnabled[TRIM_INDICATOR] =
+        true;
+
+    steppers[TRIM_INDICATOR]
+        .enableOutputs();
+
+
+    // ========================================================
+    // DOEL INSTELLEN
+    // ========================================================
+
+    steppers[TRIM_INDICATOR]
+        .moveTo(
+            trimIndicatorTarget);
+}
+
