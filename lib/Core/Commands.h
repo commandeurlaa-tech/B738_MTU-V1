@@ -18,4 +18,7 @@ enum
   kParkingBrake = 25,
   kTrimWheel = 26,
   kTrimIndicator = 27,
+  kThrottleServosActief= 28,
+  kThrottlePosition1 = 29,
+  kThrottlePosition2 = 30,
 };

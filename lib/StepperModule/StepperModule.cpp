@@ -81,6 +81,95 @@ bool trimIndicatorValueReceived = false;
 // Doelpositie in stepper-stappen
 long trimIndicatorTarget = 0;
 
+// ===========================================================
+// THROTTLE 1 CALIBRATION
+// ===========================================================
+const bool THROTTLE_1_CALIBRATION = false;
+
+const long THROTTLE_1_TEST_STEPS = 800;
+
+const bool THROTTLE_1_CALIBRATION_DIRECTION = false;
+
+const float THROTTLE_1_TEST_SPEED = 500.0;
+const float THROTTLE_1_TEST_ACCEL = 500.0;
+
+const unsigned long THROTTLE_1_HOLD_TIME_MS = 3000;
+
+long throttle1CalibrationTarget = 0;
+
+unsigned long throttle1CalibrationHoldStart = 0;
+
+enum Throttle1CalibrationState
+{
+    THROTTLE1_CAL_IDLE,
+    THROTTLE1_CAL_MOVING_OUT,
+    THROTTLE1_CAL_HOLDING,
+    THROTTLE1_CAL_RETURNING
+};
+
+Throttle1CalibrationState throttle1CalibrationState =
+    THROTTLE1_CAL_IDLE;
+
+
+// ============================================================
+// THROTTLE SERVO / A/T DATA
+// ============================================================
+
+// true wanneer PMDG de throttle-levers daadwerkelijk door de
+// autothrottle-servos laat aansturen.
+bool throttleServosActive = false;
+
+// Laatst ontvangen PMDG throttle-posities.
+float lastThrottle1Position = 0.0;
+float lastThrottle2Position = 0.0;
+
+bool throttle1PositionReceived = false;
+bool throttle2PositionReceived = false;
+
+// ============================================================
+// THROTTLE RICHTING
+// ============================================================
+//
+// false = positieve stepperrichting is Idle -> Full Throttle
+// true  = stepperrichting moet worden gespiegeld
+//
+// Voor de huidige mechanica laten we beide op false staan.
+// De instellingen zijn nu expliciet en later eenvoudig aan te
+// passen als een mechanische richting wijzigt.
+//
+const bool THROTTLE_1_GESPIEGELD = true;
+const bool THROTTLE_2_GESPIEGELD = false;
+
+// ============================================================
+// THROTTLE 1 MECHANISCHE KALIBRATIE
+// ============================================================
+//
+// fysieke idle = 0 stappen
+// fysieke full throttle = 3200 stappen
+//
+// PMDG meet bij fysieke idle ongeveer 4% en bij full throttle
+// ongeveer 85%.
+const float THROTTLE_1_PMDG_IDLE = 4.0;
+const float THROTTLE_1_PMDG_FULL = 85.0;
+const long THROTTLE_1_FULL_STEPS = 3200;
+
+const float THROTTLE_1_AT_SPEED = 3000.0;
+const float THROTTLE_1_AT_ACCEL = 1500.0;
+
+// Laatst berekende Throttle 1 stepperpositie.
+long throttle1TargetSteps = 0;
+long throttle2TargetSteps = 0;
+
+// ============================================================
+// THROTTLE 2 MECHANISCHE KALIBRATIE
+// ============================================================
+const float THROTTLE_2_PMDG_IDLE = 4.0;
+const float THROTTLE_2_PMDG_FULL = 85.0;
+const long THROTTLE_2_FULL_STEPS = 3200;
+
+const float THROTTLE_2_AT_SPEED = 3000.0;
+const float THROTTLE_2_AT_ACCEL = 1500.0;
+
 // ============================================================
 // FUNCTION PROTOTYPES
 // ============================================================
@@ -93,6 +182,18 @@ void startTrimIndicator2Homing();
 void updateTrimIndicator2Homing();
 
 void updateTrimIndicator(float indicatorValue);
+
+void updateThrottleServos(bool active);
+void updateThrottle1(float value);
+void updateThrottle2(float value);
+long throttlePercentToSteps(float value,
+                            float idlePercent,
+                            float fullPercent,
+                            long fullSteps);
+
+void startThrottle1Calibration();
+void updateThrottle1Calibration();
+
 // ============================================================
 // TRIM WHEEL
 // ============================================================
@@ -107,6 +208,8 @@ bool trimStopping = false;
 unsigned long trimStopUpdateTime = 0;
 
 const unsigned long TRIM_STOP_TIMEOUT_MS = 80;
+
+float trimAccumulatedDelta = 0.0;
 
 // ============================================================
 // TRIM SCHAAL
@@ -123,7 +226,7 @@ const bool TRIM_WHEEL_GESPIEGELD = true;
 // DEADBAND
 // ============================================================
 
-const float TRIM_DEADBAND = 0.000002;
+const float TRIM_DEADBAND = 0.000005;
 
 // ============================================================
 // PINNEN TRIM WHEEL
@@ -140,21 +243,22 @@ const int TRIM_ENA_PIN = 46;
 AccelStepper steppers[NUM_STEPPERS] =
     {
         AccelStepper(AccelStepper::DRIVER, 29, 30), // Trim Needle 1
-        AccelStepper(AccelStepper::DRIVER, 31, 32), // Trim Needle 2
+        AccelStepper(AccelStepper::DRIVER, 35, 36), // Trim Needle 2 (tijdelijk niet verbonden)
         AccelStepper(AccelStepper::DRIVER, 33, 34), // Throttle 2
-        AccelStepper(AccelStepper::DRIVER, 35, 36), // Throttle 1
+        AccelStepper(AccelStepper::DRIVER, 31, 32), // Throttle 1 (tijdelijk verplaatst)
         AccelStepper(AccelStepper::DRIVER, 37, 38), // Speed Brake
         AccelStepper(AccelStepper::DRIVER, 39, 40)  // Trim Wheel
 };
 
 const int enaPins[NUM_STEPPERS] =
     {
-        41,
-        42,
-        43,
-        44,
-        45,
-        46};
+        41, // Trim Needle 1
+        44, // Trim Needle 2
+        43, // Throttle 2
+        42, // Throttle 1
+        45, // Speed Brake
+        46  // Trim Wheel
+};
 
 // ============================================================
 // CONFIGURATIE
@@ -473,12 +577,21 @@ void initSteppers()
 
     trimIndicatorTarget = 0;
 
+    throttleServosActive = false;
+    lastThrottle1Position = 0.0;
+    lastThrottle2Position = 0.0;
+    throttle1PositionReceived = false;
+    throttle2PositionReceived = false;
+    throttle2TargetSteps = 0;
+
     // --------------------------------------------------------
     // Start homing
     // --------------------------------------------------------
 
     startTrimIndicatorHoming();
     startTrimIndicator2Homing();
+
+   
 }
 
 // ============================================================
@@ -499,6 +612,9 @@ void startTrimDeceleration()
         millis();
 }
 
+// ============================================================
+// UPDATE STEPPERS
+// ============================================================
 
 void updateSteppers()
 {
@@ -511,7 +627,18 @@ void updateSteppers()
     {
         updateTrimIndicatorHoming();
     }
+// ========================================================
+// THROTTLE 1 KALIBRATIE
+// ========================================================
 
+if (THROTTLE_1_CALIBRATION)
+{
+    updateThrottle1Calibration();
+
+    // Tijdens deze test doet de rest van de
+    // normale stepperregeling niets.
+    return;
+}
     // ========================================================
     // TRIM INDICATOR 2 HOMING
     // ========================================================
@@ -522,8 +649,37 @@ void updateSteppers()
         updateTrimIndicator2Homing();
     }
 
+        // ========================================================
+    // THROTTLE 1 KALIBRATIE STARTEN
     // ========================================================
-    // TIJDENS HOMING GEEN NORMALE AANSTURING
+
+    static bool throttle1CalibrationStarted =
+        false;
+
+    if (THROTTLE_1_CALIBRATION &&
+        !throttle1CalibrationStarted &&
+        trimIndicatorHomeState == TRIM_HOME_DONE &&
+        trimIndicator2HomeState == TRIM_HOME_DONE)
+    {
+        startThrottle1Calibration();
+
+        throttle1CalibrationStarted =
+            true;
+    }
+
+    // ========================================================
+    // THROTTLE 1 KALIBRATIE UITVOEREN
+    // ========================================================
+
+    if (THROTTLE_1_CALIBRATION)
+    {
+        updateThrottle1Calibration();
+
+        return;
+    }
+
+    // ========================================================
+    // TIJDENS HOMING GEEN ANDERE NORMALE STEPPER-AANSTURING
     // ========================================================
 
     if (trimIndicatorHomeState != TRIM_HOME_DONE ||
@@ -533,25 +689,206 @@ void updateSteppers()
     }
 
     // ========================================================
-    // CORRECTIE NEEDLE 2
-    // ========================================================
-    //
-    // Needle 2 loopt momenteel ongeveer één schaalwaarde
-    // achter op Needle 1.
-    //
-    // Eerste testcorrectie:
-    //
-
-    const long TRIM_INDICATOR_2_CORRECTION = 40;
-
-    // ========================================================
     // ALLE STEPPERS
     // ========================================================
 
     for (int i = 0; i < NUM_STEPPERS; i++)
     {
         // ====================================================
-        // UITGESCHAKELD
+        // THROTTLE 1 TIJDELIJKE KALIBRATIE
+        // ====================================================
+
+        if (i == THROTTLE_1 &&
+            THROTTLE_1_CALIBRATION)
+        {
+            // updateThrottle1Calibration() heeft de run() al
+            // uitgevoerd. Deze tak voorkomt dat de normale
+            // throttle/stepperlogica hem daarna opnieuw bedient.
+            continue;
+        }
+
+        // ====================================================
+        // THROTTLE 2 / A-T
+        // ====================================================
+        //
+        // Throttle 2 heeft geen home-schakelaar.
+        //
+        // Bij A/T servo = false:
+        //   motor wordt vrijgegeven voor handmatige bediening.
+        //
+        // Bij overgang false -> true:
+        //   de huidige PMDG-positie wordt eerst als de actuele
+        //   fysieke motorpositie aangenomen. Daardoor ontstaat
+        //   geen sprong bij het overnemen.
+        //
+        // Daarna volgt de motor de PMDG throttlepositie.
+        // ====================================================
+
+        // ====================================================
+        // THROTTLE 1 + THROTTLE 2 / A-T
+        // ====================================================
+        //
+        // Zolang de A/T-servos niet werkelijk actief zijn,
+        // blijven beide throttle-motoren vrij.
+        //
+        // Zodra de A/T-servos actief worden, volgen beide
+        // throttles hun eigen PMDG throttlepositie.
+        // ====================================================
+
+        if (i == THROTTLE_1 ||
+            i == THROTTLE_2)
+        {
+            static bool throttle1WasActive = false;
+            static bool throttle2WasActive = false;
+
+            bool &wasActive =
+                (i == THROTTLE_1)
+                    ? throttle1WasActive
+                    : throttle2WasActive;
+
+            // ------------------------------------------------
+            // A/T niet actief -> motor vrij
+            // ------------------------------------------------
+
+            if (!throttleServosActive)
+            {
+                wasActive = false;
+
+                steppers[i]
+                    .disableOutputs();
+
+                continue;
+            }
+
+            // ------------------------------------------------
+            // Wachten op PMDG-data
+            // ------------------------------------------------
+
+            if (i == THROTTLE_1 &&
+                !throttle1PositionReceived)
+            {
+                steppers[i]
+                    .disableOutputs();
+
+                continue;
+            }
+
+            if (i == THROTTLE_2 &&
+                !throttle2PositionReceived)
+            {
+                steppers[i]
+                    .disableOutputs();
+
+                continue;
+            }
+
+            // ------------------------------------------------
+            // A/T neemt over
+            // ------------------------------------------------
+            //
+            // De huidige softwarepositie wordt gelijkgezet aan
+            // de actuele PMDG-positie. De motor maakt op het
+            // exacte overnamemoment dus geen sprong.
+            // ------------------------------------------------
+
+            long currentTarget;
+
+            if (i == THROTTLE_1)
+            {
+                currentTarget =
+                    throttle1TargetSteps;
+
+                if (THROTTLE_1_GESPIEGELD)
+                {
+                    currentTarget =
+                        -currentTarget;
+                }
+
+                if (!wasActive)
+                {
+                    steppers[THROTTLE_1]
+                        .setCurrentPosition(
+                            currentTarget);
+
+                    steppers[THROTTLE_1]
+                        .setMaxSpeed(
+                            THROTTLE_1_AT_SPEED);
+
+                    steppers[THROTTLE_1]
+                        .setAcceleration(
+                            THROTTLE_1_AT_ACCEL);
+                }
+            }
+            else
+            {
+                currentTarget =
+                    throttle2TargetSteps;
+
+                if (THROTTLE_2_GESPIEGELD)
+                {
+                    currentTarget =
+                        -currentTarget;
+                }
+
+                if (!wasActive)
+                {
+                    steppers[THROTTLE_2]
+                        .setCurrentPosition(
+                            currentTarget);
+
+                    steppers[THROTTLE_2]
+                        .setMaxSpeed(
+                            THROTTLE_2_AT_SPEED);
+
+                    steppers[THROTTLE_2]
+                        .setAcceleration(
+                            THROTTLE_2_AT_ACCEL);
+                }
+            }
+
+            wasActive = true;
+
+            // ------------------------------------------------
+            // Werkelijke doelpositie
+            // ------------------------------------------------
+
+            long target;
+
+            if (i == THROTTLE_1)
+            {
+                target =
+                    throttle1TargetSteps;
+
+                if (THROTTLE_1_GESPIEGELD)
+                {
+                    target = -target;
+                }
+            }
+            else
+            {
+                target =
+                    throttle2TargetSteps;
+
+                if (THROTTLE_2_GESPIEGELD)
+                {
+                    target = -target;
+                }
+            }
+
+            steppers[i]
+                .enableOutputs();
+
+            steppers[i]
+                .moveTo(target);
+
+            steppers[i]
+                .run();
+
+            continue;
+        }
+
+        // ====================================================
+        // Alle andere steppers: disabled
         // ====================================================
 
         if (!stepperEnabled[i])
@@ -563,13 +900,8 @@ void updateSteppers()
             }
 
             steppers[i].disableOutputs();
-
             continue;
         }
-
-        // ====================================================
-        // ENABLE
-        // ====================================================
 
         steppers[i].enableOutputs();
 
@@ -586,10 +918,6 @@ void updateSteppers()
 
             unsigned long now =
                 millis();
-
-            // ------------------------------------------------
-            // ACCELERATIE
-            // ------------------------------------------------
 
             unsigned long elapsed =
                 now -
@@ -626,20 +954,12 @@ void updateSteppers()
                 setTrimTimerSpeed(speed);
             }
 
-            // ------------------------------------------------
-            // GEEN NIEUWE DATA
-            // ------------------------------------------------
-
             if (now -
                     lastTrimUpdateTime >=
                 TRIM_STOP_TIMEOUT_MS)
             {
                 startTrimDeceleration();
             }
-
-            // ------------------------------------------------
-            // ZACHTE DECELERATIE
-            // ------------------------------------------------
 
             if (trimStopping)
             {
@@ -685,9 +1005,7 @@ void updateSteppers()
                     else
                     {
                         stopTrimTimer();
-
-                        trimStopping =
-                            false;
+                        trimStopping = false;
                     }
                 }
             }
@@ -705,15 +1023,6 @@ void updateSteppers()
             {
                 continue;
             }
-
-            if (trimIndicatorHomeState !=
-                TRIM_HOME_DONE)
-            {
-                continue;
-            }
-
-            // Needle 1 is al correct berekend
-            // in updateTrimIndicator().
 
             steppers[TRIM_INDICATOR]
                 .moveTo(
@@ -736,33 +1045,14 @@ void updateSteppers()
                 continue;
             }
 
-            if (trimIndicator2HomeState !=
-                TRIM_HOME_DONE)
-            {
-                continue;
-            }
-
-            // Needle 1 gebruikt een negatieve positie
-            // vanwege GESPIEGELD = true.
-            //
-            // Needle 2 draait de andere kant op.
-            //
-            // Daarom wordt het doel eerst gespiegeld
-            // en daarna met een kleine correctie verhoogd.
-
             long target2 =
                 -trimIndicatorTarget;
 
             target2 +=
-                TRIM_INDICATOR_2_CORRECTION;
-
-            // ------------------------------------------------
-            // Doel instellen
-            // ------------------------------------------------
+                40;
 
             steppers[TRIM_INDICATOR_2]
-                .moveTo(
-                    target2);
+                .moveTo(target2);
 
             steppers[TRIM_INDICATOR_2]
                 .run();
@@ -791,7 +1081,6 @@ void updateSteppers()
             .run();
     }
 }
-
 
 // ============================================================
 // TARGET
@@ -902,6 +1191,220 @@ bool isStepperEnabled(
 }
 
 // ============================================================
+// START THROTTLE 1 KALIBRATIE
+// ============================================================
+
+void startThrottle1Calibration()
+{
+    if (!THROTTLE_1_CALIBRATION)
+    {
+        return;
+    }
+
+    // De huidige mechanische positie wordt softwarematig 0.
+    steppers[THROTTLE_1]
+        .setCurrentPosition(0);
+
+    steppers[THROTTLE_1]
+        .setMaxSpeed(THROTTLE_1_TEST_SPEED);
+
+    steppers[THROTTLE_1]
+        .setAcceleration(THROTTLE_1_TEST_ACCEL);
+
+    throttle1CalibrationTarget =
+        THROTTLE_1_CALIBRATION_DIRECTION
+            ? THROTTLE_1_TEST_STEPS
+            : -THROTTLE_1_TEST_STEPS;
+
+    steppers[THROTTLE_1]
+        .enableOutputs();
+
+    steppers[THROTTLE_1]
+        .moveTo(throttle1CalibrationTarget);
+
+    throttle1CalibrationState =
+        THROTTLE1_CAL_MOVING_OUT;
+}
+
+// ============================================================
+// UPDATE THROTTLE 1 KALIBRATIE
+// ============================================================
+
+void updateThrottle1Calibration()
+{
+    if (!THROTTLE_1_CALIBRATION)
+    {
+        return;
+    }
+
+    // --------------------------------------------------------
+    // NAAR TESTPUNT
+    // --------------------------------------------------------
+
+    if (throttle1CalibrationState ==
+        THROTTLE1_CAL_MOVING_OUT)
+    {
+        steppers[THROTTLE_1]
+            .run();
+
+        if (steppers[THROTTLE_1]
+                .distanceToGo() == 0)
+        {
+            throttle1CalibrationHoldStart =
+                millis();
+
+            throttle1CalibrationState =
+                THROTTLE1_CAL_HOLDING;
+        }
+
+        return;
+    }
+
+    // --------------------------------------------------------
+    // 3 SECONDEN VAS HOUDEN
+    // --------------------------------------------------------
+
+    if (throttle1CalibrationState ==
+        THROTTLE1_CAL_HOLDING)
+    {
+        if (millis() -
+                throttle1CalibrationHoldStart >=
+            THROTTLE_1_HOLD_TIME_MS)
+        {
+            steppers[THROTTLE_1]
+                .moveTo(0);
+
+            throttle1CalibrationState =
+                THROTTLE1_CAL_RETURNING;
+        }
+
+        return;
+    }
+
+    // --------------------------------------------------------
+    // TERUG NAAR SOFTWARE 0
+    // --------------------------------------------------------
+
+    if (throttle1CalibrationState ==
+        THROTTLE1_CAL_RETURNING)
+    {
+        steppers[THROTTLE_1]
+            .run();
+
+        if (steppers[THROTTLE_1]
+                .distanceToGo() == 0)
+        {
+            steppers[THROTTLE_1]
+                .setCurrentPosition(0);
+
+            steppers[THROTTLE_1]
+                .disableOutputs();
+
+            throttle1CalibrationState =
+                THROTTLE1_CAL_IDLE;
+        }
+
+        return;
+    }
+}
+
+// ============================================================
+// THROTTLE SERVO STATUS
+// ============================================================
+//
+// true = A/T servo's sturen daadwerkelijk de thrust levers
+//
+// ============================================================
+
+void updateThrottleServos(bool active)
+{
+    throttleServosActive =
+        active;
+}
+
+// ============================================================
+// THROTTLE 1 POSITIE
+// ============================================================
+
+long throttlePercentToSteps(
+    float value,
+    float idlePercent,
+    float fullPercent,
+    long fullSteps)
+{
+    if (value <= idlePercent)
+    {
+        return 0;
+    }
+
+    if (value >= fullPercent)
+    {
+        return fullSteps;
+    }
+
+    float normalized =
+        (value - idlePercent) /
+        (fullPercent - idlePercent);
+
+    long target =
+        (long)(normalized *
+                   (float)fullSteps +
+               0.5);
+
+    if (target < 0)
+    {
+        target = 0;
+    }
+
+    if (target > fullSteps)
+    {
+        target = fullSteps;
+    }
+
+    return target;
+}
+
+// ============================================================
+// THROTTLE 1 POSITIE
+// ============================================================
+
+void updateThrottle1(float value)
+{
+    lastThrottle1Position =
+        value;
+
+    throttle1PositionReceived =
+        true;
+
+    throttle1TargetSteps =
+        throttlePercentToSteps(
+            value,
+            THROTTLE_1_PMDG_IDLE,
+            THROTTLE_1_PMDG_FULL,
+            THROTTLE_1_FULL_STEPS);
+}
+
+// ============================================================
+// THROTTLE 2 POSITIE
+// ============================================================
+
+void updateThrottle2(float value)
+{
+    lastThrottle2Position =
+        value;
+
+    throttle2PositionReceived =
+        true;
+
+    throttle2TargetSteps =
+        throttlePercentToSteps(
+            value,
+            THROTTLE_2_PMDG_IDLE,
+            THROTTLE_2_PMDG_FULL,
+            THROTTLE_2_FULL_STEPS);
+}
+
+// ============================================================
 // TRIM WHEEL
 // ============================================================
 
@@ -941,39 +1444,23 @@ void updateTrimWheel(
     // ========================================================
 
     float delta =
-        trimValue -
-        oldTrim;
+        trimValue - oldTrim;
 
     oldTrim =
         trimValue;
 
-    // ========================================================
-    // DEADBAND
-    // ========================================================
+    trimAccumulatedDelta += delta;
 
-    if (delta > -TRIM_DEADBAND &&
-        delta < TRIM_DEADBAND)
+    if (trimAccumulatedDelta > -TRIM_DEADBAND &&
+        trimAccumulatedDelta < TRIM_DEADBAND)
     {
         return;
     }
 
-    // ========================================================
-    // RICHTING
-    // ========================================================
-
     bool positiveDirection =
-        (delta > 0.0);
+        (trimAccumulatedDelta > 0.0);
 
-    // ========================================================
-    // SPIEGELEN
-    // ========================================================
-
-    if (TRIM_WHEEL_GESPIEGELD)
-    {
-        positiveDirection =
-            !positiveDirection;
-    }
-
+    trimAccumulatedDelta = 0.0;
     // ========================================================
     // ENABLE
     // ========================================================

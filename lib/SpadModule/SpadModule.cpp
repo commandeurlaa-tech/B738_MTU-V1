@@ -145,6 +145,24 @@ messenger.sendCmdArg(kTrimIndicator);
 messenger.sendCmdArg("SIMCONNECT:ELEVATOR TRIM INDICATOR");
 messenger.sendCmdEnd();
 
+messenger.sendCmdStart(kCommand);
+messenger.sendCmdArg("SUBSCRIBE");
+messenger.sendCmdArg(kThrottleServosActief);
+messenger.sendCmdArg("PMDGNG3:AFS_AutothrottleServosConnected");
+messenger.sendCmdEnd();
+
+messenger.sendCmdStart(kCommand);
+messenger.sendCmdArg("SUBSCRIBE");
+messenger.sendCmdArg(kThrottlePosition1);
+messenger.sendCmdArg("SIMCONNECT:GENERAL ENG THROTTLE LEVER POSITION:1");
+messenger.sendCmdEnd();
+
+messenger.sendCmdStart(kCommand);
+messenger.sendCmdArg("SUBSCRIBE");
+messenger.sendCmdArg(kThrottlePosition2);
+messenger.sendCmdArg("SIMCONNECT:GENERAL ENG THROTTLE LEVER POSITION:2");
+messenger.sendCmdEnd();
+
     //----- CREATE ENCODERS --------------------------------------------------------------
 
     //----- CREATE BUTTONS-----------------------------------------------------

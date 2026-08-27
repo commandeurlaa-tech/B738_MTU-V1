@@ -334,12 +334,7 @@ void onIncomingData()
     if (dataID == kTrimWheel)
     {
         float trimValue = messenger.readFloatArg();
-        /*
-             String msg = "TRIM = ";
-                msg += String(trimValue, 6);
-
-                messenger.sendCmd(kDebug, msg);
-        */
+ 
         updateTrimWheel(trimValue);
     }
 
@@ -351,11 +346,29 @@ void onIncomingData()
     {
 
         float indicatorValue = messenger.readFloatArg();
-
-  String msg = "TI = ";
-    msg += String(indicatorValue, 6);
-    messenger.sendCmd(kDebug, msg);
-
         updateTrimIndicator(indicatorValue);
     }
+    // ========================================================
+    // THROTTLE SERVOS ACTIEF
+    // ========================================================
+       if (dataID == kThrottleServosActief)
+    {
+        boolean servosValue = messenger.readBoolArg();
+        updateThrottleServos(servosValue);
+    }
+   // ========================================================
+    //POSITIONs THOTTLES
+    // ========================================================
+
+    if (dataID == kThrottlePosition1)
+    {
+        float throttle1Value = messenger.readFloatArg();
+        updateThrottle1(throttle1Value);
+    }
+    if (dataID == kThrottlePosition2)
+    {
+        float throttle2Value = messenger.readFloatArg();
+        updateThrottle2(throttle2Value);
+    }
+ 
 }

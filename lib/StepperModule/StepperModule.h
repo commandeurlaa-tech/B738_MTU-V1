@@ -31,6 +31,10 @@ void updateTrimIndicator(float indicatorValue);
 void setStepperTarget(int index, long position);
 void setStepperEnable(int index, bool enabled);
 
+void updateThrottleServos(bool active);
+void updateThrottle1(float value);
+void updateThrottle2(float value);
+
 long getStepperPosition(int index);
 bool isStepperEnabled(int index);
 
