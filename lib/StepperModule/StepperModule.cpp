@@ -110,7 +110,6 @@ enum Throttle1CalibrationState
 Throttle1CalibrationState throttle1CalibrationState =
     THROTTLE1_CAL_IDLE;
 
-
 // ============================================================
 // THROTTLE SERVO / A/T DATA
 // ============================================================
@@ -171,6 +170,44 @@ const float THROTTLE_2_AT_SPEED = 3000.0;
 const float THROTTLE_2_AT_ACCEL = 1500.0;
 
 // ============================================================
+// SPEEDBRAKE
+// ============================================================
+//
+// SPAD.next:
+//   SIMCONNECT:SPOILERS HANDLE POSITION
+//
+// Observed:
+//   0.00       = DOWN
+//   0.60-0.65  = ARMED
+//   ~0.76      = highest observed in normal flight
+//   1.00       = landing / full deployment
+//
+// Mechanical calibration:
+//   0     = DOWN
+//   400   = 26 mm
+//   800   = 60 mm
+//   1200  = 94 mm
+//   1600  = 130 mm = UP
+//
+// ============================================================
+
+const float SPEED_BRAKE_ARMED_MIN = 0.60;
+const float SPEED_BRAKE_ARMED_MAX = 0.65;
+
+const float SPEED_BRAKE_DEPLOY_THRESHOLD = 0.90;
+const float SPEED_BRAKE_RETRACT_THRESHOLD = 0.59;
+
+const long SPEED_BRAKE_DOWN_STEPS = 0;
+const long SPEED_BRAKE_UP_STEPS = 1600;
+
+const float SPEED_BRAKE_SPEED = 2500.0;
+const float SPEED_BRAKE_ACCEL = 1000.0;
+
+float lastSpeedBrakePosition = 0.0;
+bool speedBrakePositionReceived = false;
+bool speedBrakeDeployed = false;
+
+// ============================================================
 // FUNCTION PROTOTYPES
 // ============================================================
 void startTrimIndicatorCalibration();
@@ -190,6 +227,8 @@ long throttlePercentToSteps(float value,
                             float idlePercent,
                             float fullPercent,
                             long fullSteps);
+void updateSpeedBrake(float value);
+long speedBrakePositionToSteps(float value);
 
 void startThrottle1Calibration();
 void updateThrottle1Calibration();
@@ -226,7 +265,7 @@ const bool TRIM_WHEEL_GESPIEGELD = false;
 // DEADBAND
 // ============================================================
 
-const float TRIM_DEADBAND = 0.000005;
+const float TRIM_DEADBAND = 0.000100;
 
 // ============================================================
 // PINNEN TRIM WHEEL
@@ -245,7 +284,7 @@ AccelStepper steppers[NUM_STEPPERS] =
         AccelStepper(AccelStepper::DRIVER, 29, 30), // Trim Needle 1
         AccelStepper(AccelStepper::DRIVER, 35, 36), // Trim Needle 2 (tijdelijk niet verbonden)
         AccelStepper(AccelStepper::DRIVER, 33, 34), // Throttle 2
-        AccelStepper(AccelStepper::DRIVER, 31, 32), // Throttle 1 (tijdelijk verplaatst)
+        AccelStepper(AccelStepper::DRIVER, 31, 32), // Throttle 1
         AccelStepper(AccelStepper::DRIVER, 37, 38), // Speed Brake
         AccelStepper(AccelStepper::DRIVER, 39, 40)  // Trim Wheel
 };
@@ -584,14 +623,16 @@ void initSteppers()
     throttle2PositionReceived = false;
     throttle2TargetSteps = 0;
 
+    lastSpeedBrakePosition = 0.0;
+    speedBrakePositionReceived = false;
+    speedBrakeDeployed = false;
+
     // --------------------------------------------------------
     // Start homing
     // --------------------------------------------------------
 
     startTrimIndicatorHoming();
     startTrimIndicator2Homing();
-
-   
 }
 
 // ============================================================
@@ -627,18 +668,18 @@ void updateSteppers()
     {
         updateTrimIndicatorHoming();
     }
-// ========================================================
-// THROTTLE 1 KALIBRATIE
-// ========================================================
+    // ========================================================
+    // THROTTLE 1 KALIBRATIE
+    // ========================================================
 
-if (THROTTLE_1_CALIBRATION)
-{
-    updateThrottle1Calibration();
+    if (THROTTLE_1_CALIBRATION)
+    {
+        updateThrottle1Calibration();
 
-    // Tijdens deze test doet de rest van de
-    // normale stepperregeling niets.
-    return;
-}
+        // Tijdens deze test doet de rest van de
+        // normale stepperregeling niets.
+        return;
+    }
     // ========================================================
     // TRIM INDICATOR 2 HOMING
     // ========================================================
@@ -649,7 +690,7 @@ if (THROTTLE_1_CALIBRATION)
         updateTrimIndicator2Homing();
     }
 
-        // ========================================================
+    // ========================================================
     // THROTTLE 1 KALIBRATIE STARTEN
     // ========================================================
 
@@ -723,6 +764,72 @@ if (THROTTLE_1_CALIBRATION)
         //
         // Daarna volgt de motor de PMDG throttlepositie.
         // ====================================================
+
+        // ====================================================
+        // SPEEDBRAKE
+        // ====================================================
+        //
+        // 0.00          = DOWN
+        // 0.60-0.65     = ARMED
+        // <= ongeveer 0.76 = normale vlucht
+        // >= 0.90       = DEPLOY -> 1600 stappen
+        //
+        // ====================================================
+
+        if (i == SPEED_BRAKE)
+        {
+            if (!speedBrakePositionReceived)
+            {
+                steppers[SPEED_BRAKE]
+                    .disableOutputs();
+
+                continue;
+            }
+
+            long target =
+                speedBrakePositionToSteps(
+                    lastSpeedBrakePosition);
+
+            bool deployed =
+                (target == SPEED_BRAKE_UP_STEPS);
+
+            if (deployed != speedBrakeDeployed)
+            {
+                speedBrakeDeployed =
+                    deployed;
+
+                steppers[SPEED_BRAKE]
+                    .setMaxSpeed(
+                        SPEED_BRAKE_SPEED);
+
+                steppers[SPEED_BRAKE]
+                    .setAcceleration(
+                        SPEED_BRAKE_ACCEL);
+
+                steppers[SPEED_BRAKE]
+                    .enableOutputs();
+
+                steppers[SPEED_BRAKE]
+                    .moveTo(target);
+            }
+
+            if (steppers[SPEED_BRAKE]
+                    .distanceToGo() != 0)
+            {
+                steppers[SPEED_BRAKE]
+                    .enableOutputs();
+
+                steppers[SPEED_BRAKE]
+                    .run();
+            }
+            else
+            {
+                steppers[SPEED_BRAKE]
+                    .disableOutputs();
+            }
+
+            continue;
+        }
 
         // ====================================================
         // THROTTLE 1 + THROTTLE 2 / A-T
@@ -1362,6 +1469,71 @@ long throttlePercentToSteps(
     }
 
     return target;
+}
+
+// ============================================================
+// SPEEDBRAKE POSITION -> STEPS
+// ============================================================
+//
+// We sturen voorlopig alleen de veilige automatische
+// DOWN <-> UP toestand. ARM en normale vluchtwaarden worden
+// niet als volledige deploy geïnterpreteerd.
+//
+// ============================================================
+
+long speedBrakePositionToSteps(float value)
+{
+    if (value < 0.0)
+    {
+        value = 0.0;
+    }
+
+    if (value > 1.0)
+    {
+        value = 1.0;
+    }
+
+    if (speedBrakeDeployed)
+    {
+        if (value < SPEED_BRAKE_RETRACT_THRESHOLD)
+        {
+            return SPEED_BRAKE_DOWN_STEPS;
+        }
+
+        return SPEED_BRAKE_UP_STEPS;
+    }
+
+    if (value >= SPEED_BRAKE_DEPLOY_THRESHOLD)
+    {
+        return SPEED_BRAKE_UP_STEPS;
+    }
+
+    return SPEED_BRAKE_DOWN_STEPS;
+}
+
+// ============================================================
+// UPDATE SPEEDBRAKE
+// ============================================================
+
+void updateSpeedBrake(float value)
+{
+    if (value < 0.0)
+    {
+        value = 0.0;
+    }
+
+    if (value > 1.0)
+    {
+        value = 1.0;
+    }
+
+    lastSpeedBrakePosition =
+        value;
+
+    speedBrakePositionReceived =
+        true;
+
+    // Het doel wordt in updateSteppers() uitgevoerd.
 }
 
 // ============================================================

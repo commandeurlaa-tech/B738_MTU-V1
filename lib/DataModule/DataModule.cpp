@@ -334,7 +334,7 @@ void onIncomingData()
     if (dataID == kTrimWheel)
     {
         float trimValue = messenger.readFloatArg();
- 
+
         updateTrimWheel(trimValue);
     }
 
@@ -351,13 +351,13 @@ void onIncomingData()
     // ========================================================
     // THROTTLE SERVOS ACTIEF
     // ========================================================
-       if (dataID == kThrottleServosActief)
+    if (dataID == kThrottleServosActief)
     {
         boolean servosValue = messenger.readBoolArg();
         updateThrottleServos(servosValue);
     }
-   // ========================================================
-    //POSITIONs THOTTLES
+    // ========================================================
+    // POSITIONs THOTTLES
     // ========================================================
 
     if (dataID == kThrottlePosition1)
@@ -370,5 +370,16 @@ void onIncomingData()
         float throttle2Value = messenger.readFloatArg();
         updateThrottle2(throttle2Value);
     }
- 
+
+    // ========================================================
+    // SPOILER POSITION
+    // ========================================================
+
+    if (dataID == kSpoilerPosition)
+    {
+        float spoilerValue =
+            messenger.readFloatArg();
+
+        updateSpeedBrake(spoilerValue);
+    }
 }

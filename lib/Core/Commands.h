@@ -21,4 +21,5 @@ enum
   kThrottleServosActief= 28,
   kThrottlePosition1 = 29,
   kThrottlePosition2 = 30,
+  kSpoilerPosition = 31
 };

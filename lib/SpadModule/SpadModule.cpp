@@ -163,6 +163,12 @@ messenger.sendCmdArg(kThrottlePosition2);
 messenger.sendCmdArg("SIMCONNECT:GENERAL ENG THROTTLE LEVER POSITION:2");
 messenger.sendCmdEnd();
 
+messenger.sendCmdStart(kCommand);
+messenger.sendCmdArg("SUBSCRIBE");
+messenger.sendCmdArg(kSpoilerPosition);
+messenger.sendCmdArg("SIMCONNECT:SPOILERS HANDLE POSITION");
+messenger.sendCmdEnd();
+
     //----- CREATE ENCODERS --------------------------------------------------------------
 
     //----- CREATE BUTTONS-----------------------------------------------------

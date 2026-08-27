@@ -38,6 +38,7 @@ void updateThrottle2(float value);
 long getStepperPosition(int index);
 bool isStepperEnabled(int index);
 
+void updateSpeedBrake(float value);
 
 
 #endif
