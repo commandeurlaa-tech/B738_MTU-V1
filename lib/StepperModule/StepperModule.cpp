@@ -220,7 +220,7 @@ const float TRIM_MAX = 0.2251474735;
 
 const float TRIM_STEPS_PER_RAD = 234635.0;
 
-const bool TRIM_WHEEL_GESPIEGELD = true;
+const bool TRIM_WHEEL_GESPIEGELD = false;
 
 // ============================================================
 // DEADBAND
