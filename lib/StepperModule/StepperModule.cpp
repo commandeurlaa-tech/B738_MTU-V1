@@ -110,6 +110,7 @@ enum Throttle1CalibrationState
 Throttle1CalibrationState throttle1CalibrationState =
     THROTTLE1_CAL_IDLE;
 
+
 // ============================================================
 // THROTTLE SERVO / A/T DATA
 // ============================================================
@@ -259,7 +260,7 @@ const float TRIM_MAX = 0.2251474735;
 
 const float TRIM_STEPS_PER_RAD = 234635.0;
 
-const bool TRIM_WHEEL_GESPIEGELD = false;
+const bool TRIM_WHEEL_GESPIEGELD = true;
 
 // ============================================================
 // DEADBAND
@@ -281,23 +282,33 @@ const int TRIM_ENA_PIN = 46;
 
 AccelStepper steppers[NUM_STEPPERS] =
     {
-        AccelStepper(AccelStepper::DRIVER, 29, 30), // Trim Needle 1
+        AccelStepper(AccelStepper::DRIVER, 33, 34), // Trim Needle 1
         AccelStepper(AccelStepper::DRIVER, 35, 36), // Trim Needle 2 (tijdelijk niet verbonden)
-        AccelStepper(AccelStepper::DRIVER, 33, 34), // Throttle 2
-        AccelStepper(AccelStepper::DRIVER, 31, 32), // Throttle 1
+        AccelStepper(AccelStepper::DRIVER, 31, 32), // Throttle 2
+        AccelStepper(AccelStepper::DRIVER, 29, 30), // Throttle 1
         AccelStepper(AccelStepper::DRIVER, 37, 38), // Speed Brake
         AccelStepper(AccelStepper::DRIVER, 39, 40)  // Trim Wheel
-};
+    };
+
+// ============================================================
+// NEEDLE 2 - PERMANENT STANDALONE OBJECT
+// ============================================================
+
+AccelStepper needle2Standalone(
+    AccelStepper::DRIVER,
+    35,
+    36
+);
 
 const int enaPins[NUM_STEPPERS] =
     {
-        41, // Trim Needle 1
+        43, // Trim Needle 1
         44, // Trim Needle 2
-        43, // Throttle 2
-        42, // Throttle 1
-        45, // Speed Brake
+        42, // Throttle 2
+        41, // Throttle 1
+        48, // Speed Brake
         46  // Trim Wheel
-};
+    };
 
 // ============================================================
 // CONFIGURATIE
@@ -554,6 +565,11 @@ void initSteppers()
 
     for (int i = 0; i < NUM_STEPPERS; i++)
     {
+        if (i == TRIM_INDICATOR_2)
+        {
+            continue;
+        }
+
         steppers[i].setEnablePin(
             enaPins[i]);
 
@@ -628,11 +644,29 @@ void initSteppers()
     speedBrakeDeployed = false;
 
     // --------------------------------------------------------
+    // Needle 2 standalone initialiseren
+    // --------------------------------------------------------
+
+    needle2Standalone.setEnablePin(44);
+    needle2Standalone.setPinsInverted(
+        false,
+        false,
+        true);
+    needle2Standalone.setMaxSpeed(
+        stepperConfig[TRIM_INDICATOR_2].speed);
+    needle2Standalone.setAcceleration(
+        stepperConfig[TRIM_INDICATOR_2].acceleration);
+    needle2Standalone.setCurrentPosition(0);
+    needle2Standalone.disableOutputs();
+
+    // --------------------------------------------------------
     // Start homing
     // --------------------------------------------------------
 
     startTrimIndicatorHoming();
     startTrimIndicator2Homing();
+
+   
 }
 
 // ============================================================
@@ -668,18 +702,18 @@ void updateSteppers()
     {
         updateTrimIndicatorHoming();
     }
-    // ========================================================
-    // THROTTLE 1 KALIBRATIE
-    // ========================================================
+// ========================================================
+// THROTTLE 1 KALIBRATIE
+// ========================================================
 
-    if (THROTTLE_1_CALIBRATION)
-    {
-        updateThrottle1Calibration();
+if (THROTTLE_1_CALIBRATION)
+{
+    updateThrottle1Calibration();
 
-        // Tijdens deze test doet de rest van de
-        // normale stepperregeling niets.
-        return;
-    }
+    // Tijdens deze test doet de rest van de
+    // normale stepperregeling niets.
+    return;
+}
     // ========================================================
     // TRIM INDICATOR 2 HOMING
     // ========================================================
@@ -690,7 +724,7 @@ void updateSteppers()
         updateTrimIndicator2Homing();
     }
 
-    // ========================================================
+        // ========================================================
     // THROTTLE 1 KALIBRATIE STARTEN
     // ========================================================
 
@@ -995,6 +1029,32 @@ void updateSteppers()
         }
 
         // ====================================================
+        // TRIM INDICATOR / NEEDLE 2 - STANDALONE
+        // ====================================================
+
+        if (i == TRIM_INDICATOR_2)
+        {
+            if (!stepperEnabled[TRIM_INDICATOR_2] ||
+                !trimIndicatorValueReceived)
+            {
+                needle2Standalone.disableOutputs();
+                continue;
+            }
+
+            long target2 =
+                -trimIndicatorTarget;
+
+            target2 +=
+                40;
+
+            needle2Standalone.enableOutputs();
+            needle2Standalone.moveTo(target2);
+            needle2Standalone.run();
+
+            continue;
+        }
+
+        // ====================================================
         // Alle andere steppers: disabled
         // ====================================================
 
@@ -1142,32 +1202,6 @@ void updateSteppers()
         }
 
         // ====================================================
-        // TRIM INDICATOR / NEEDLE 2
-        // ====================================================
-
-        if (i == TRIM_INDICATOR_2)
-        {
-            if (!trimIndicatorValueReceived)
-            {
-                continue;
-            }
-
-            long target2 =
-                -trimIndicatorTarget;
-
-            target2 +=
-                40;
-
-            steppers[TRIM_INDICATOR_2]
-                .moveTo(target2);
-
-            steppers[TRIM_INDICATOR_2]
-                .run();
-
-            continue;
-        }
-
-        // ====================================================
         // ANDERE STEPPERS
         // ====================================================
 
@@ -1236,6 +1270,20 @@ void setStepperEnable(
     stepperEnabled[index] =
         enabled;
 
+    if (index == TRIM_INDICATOR_2)
+    {
+        if (enabled)
+        {
+            needle2Standalone.enableOutputs();
+        }
+        else
+        {
+            needle2Standalone.disableOutputs();
+        }
+
+        return;
+    }
+
     if (enabled)
     {
         steppers[index].enableOutputs();
@@ -1275,6 +1323,11 @@ long getStepperPosition(
         interrupts();
 
         return position;
+    }
+
+    if (index == TRIM_INDICATOR_2)
+    {
+        return needle2Standalone.currentPosition();
     }
 
     return steppers[index]
@@ -1861,23 +1914,23 @@ void startTrimIndicator2Homing()
     trimIndicator2HomeState =
         TRIM_HOME_SEARCHING;
 
-    steppers[TRIM_INDICATOR_2]
+    needle2Standalone
         .enableOutputs();
 
-    steppers[TRIM_INDICATOR_2]
+    needle2Standalone
         .setMaxSpeed(
             TRIM_INDICATOR_2_HOME_SPEED);
 
     // FALSE = richting naar HOME voor Needle 2
     if (TRIM_INDICATOR_2_GESPIEGELD)
     {
-        steppers[TRIM_INDICATOR_2]
+        needle2Standalone
             .setSpeed(
                 TRIM_INDICATOR_2_HOME_SPEED);
     }
     else
     {
-        steppers[TRIM_INDICATOR_2]
+        needle2Standalone
             .setSpeed(
                 -TRIM_INDICATOR_2_HOME_SPEED);
     }
@@ -1903,10 +1956,10 @@ void updateTrimIndicator2Homing()
             // HOME GEVONDEN
             // ------------------------------------------------
 
-            steppers[TRIM_INDICATOR_2]
+            needle2Standalone
                 .setSpeed(0);
 
-            steppers[TRIM_INDICATOR_2]
+            needle2Standalone
                 .setCurrentPosition(0);
 
             // ------------------------------------------------
@@ -1918,7 +1971,7 @@ void updateTrimIndicator2Homing()
                     ? TRIM_INDICATOR_2_HOME_OFFSET
                     : -TRIM_INDICATOR_2_HOME_OFFSET;
 
-            steppers[TRIM_INDICATOR_2]
+            needle2Standalone
                 .moveTo(offset);
 
             trimIndicator2HomeState =
@@ -1931,7 +1984,7 @@ void updateTrimIndicator2Homing()
         // Nog niet bij HOME
         // ----------------------------------------------------
 
-        steppers[TRIM_INDICATOR_2]
+        needle2Standalone
             .runSpeed();
 
         return;
@@ -1944,32 +1997,32 @@ void updateTrimIndicator2Homing()
     if (trimIndicator2HomeState ==
         TRIM_HOME_OFFSET)
     {
-        steppers[TRIM_INDICATOR_2]
+        needle2Standalone
             .run();
 
-        if (steppers[TRIM_INDICATOR_2]
+        if (needle2Standalone
                 .distanceToGo() == 0)
         {
             // ------------------------------------------------
             // ECHTE SOFTWARE 0
             // ------------------------------------------------
 
-            steppers[TRIM_INDICATOR_2]
+            needle2Standalone
                 .setCurrentPosition(0);
 
             // ------------------------------------------------
             // NORMALE INSTELLINGEN
             // ------------------------------------------------
 
-            steppers[TRIM_INDICATOR_2]
+            needle2Standalone
                 .setMaxSpeed(
                     stepperConfig[TRIM_INDICATOR_2].speed);
 
-            steppers[TRIM_INDICATOR_2]
+            needle2Standalone
                 .setAcceleration(
                     stepperConfig[TRIM_INDICATOR_2].acceleration);
 
-            steppers[TRIM_INDICATOR_2]
+            needle2Standalone
                 .setSpeed(0);
 
             // ------------------------------------------------
@@ -1981,7 +2034,7 @@ void updateTrimIndicator2Homing()
 
             // Voorlopig nog uitschakelen.
             // Needle 2 krijgt nog geen kTrimIndicator.
-            steppers[TRIM_INDICATOR_2]
+            needle2Standalone
                 .disableOutputs();
 
             return;
