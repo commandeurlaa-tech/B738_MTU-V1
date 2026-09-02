@@ -33,7 +33,7 @@ const int TRIM_INDICATOR_2_HOME_PIN = 15;
 const bool TRIM_INDICATOR_2_GESPIEGELD = false;
 
 // Voorlopig dezelfde offset als Needle 1
-const long TRIM_INDICATOR_2_HOME_OFFSET = 100;
+const long TRIM_INDICATOR_2_HOME_OFFSET =  10;
 
 const float TRIM_INDICATOR_2_HOME_SPEED = 500.0;
 // ============================================================
