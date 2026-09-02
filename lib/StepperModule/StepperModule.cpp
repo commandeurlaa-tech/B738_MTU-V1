@@ -827,6 +827,26 @@ if (THROTTLE_1_CALIBRATION)
             bool deployed =
                 (target == SPEED_BRAKE_UP_STEPS);
 
+            // Handmatige DOWN:
+            // als we niet automatisch deployed waren, mag de motor
+            // niet opnieuw richting DOWN gaan lopen. Synchroniseer
+            // alleen de softwarepositie en laat ENA48 vrij.
+            if (!speedBrakeDeployed &&
+                target == SPEED_BRAKE_DOWN_STEPS)
+            {
+                steppers[SPEED_BRAKE]
+                    .disableOutputs();
+
+                steppers[SPEED_BRAKE]
+                    .setCurrentPosition(
+                        SPEED_BRAKE_DOWN_STEPS);
+
+                continue;
+            }
+
+            // Automatische overgang DOWN <-> UP.
+            // Alleen een eerdere automatische deploy mag later
+            // een automatische retract naar DOWN veroorzaken.
             if (deployed != speedBrakeDeployed)
             {
                 speedBrakeDeployed =
@@ -860,6 +880,13 @@ if (THROTTLE_1_CALIBRATION)
             {
                 steppers[SPEED_BRAKE]
                     .disableOutputs();
+
+                if (!speedBrakeDeployed)
+                {
+                    steppers[SPEED_BRAKE]
+                        .setCurrentPosition(
+                            SPEED_BRAKE_DOWN_STEPS);
+                }
             }
 
             continue;

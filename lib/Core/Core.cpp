@@ -23,7 +23,10 @@ void initHardware()
 
     initServo();
 
-    // Geen algemene OUTPUT/HIGH initialisatie meer voor 28 t/m 47.
+    // Pin 28 is the "ENABLE" pin for the parking brake light
+    pinMode(28, OUTPUT); 
+
+    // Geen algemene OUTPUT/HIGH initialisatie meer voor 29 t/m 47.
     // StepperModule beheert zijn eigen STEP/DIR/ENA-pinnen.
 
     for (int i = 10; i <= 25; i++)
