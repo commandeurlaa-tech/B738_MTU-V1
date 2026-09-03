@@ -17,6 +17,8 @@ int DimState = 0;
 int lastButtonStates[26] = {};
 int buttonStates[26];
 
+
+
 void initHardware()
 {
     Serial.begin(115200);
@@ -25,6 +27,9 @@ void initHardware()
 
     // Pin 28 is the "ENABLE" pin for the parking brake light
     pinMode(28, OUTPUT); 
+    pinMode(3, OUTPUT); // Pin 29 is the "ENABLE" pin for the trim indicator stepper
+   
+
 
     // Geen algemene OUTPUT/HIGH initialisatie meer voor 29 t/m 47.
     // StepperModule beheert zijn eigen STEP/DIR/ENA-pinnen.

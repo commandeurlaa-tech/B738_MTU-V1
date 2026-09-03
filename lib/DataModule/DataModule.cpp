@@ -200,7 +200,7 @@ void onIncomingData()
     // DATA ID 20
     // ========================================================
 
-    if (dataID == 20)
+    if (dataID == kPaneldimmer1)
     {
         float fldataVal = messenger.readFloatArg();
 
@@ -208,15 +208,15 @@ void onIncomingData()
 
         int32_t dataVal = round(fldataVal);
 
-        analogWrite(9, dataVal);
+        analogWrite(3, dataVal);
 
-        if (dataVal >= 1)
+        /*if (dataVal >= 1)
         {
-            digitalWrite(13, HIGH);
+            digitalWrite(3, HIGH);
         }
         else
         {
-            digitalWrite(13, LOW);
+            digitalWrite(3, LOW);
         }
 
         int dimvalue = round(dataVal / 40);
@@ -225,26 +225,27 @@ void onIncomingData()
         {
             olddimvalue = dimvalue;
         }
+        */
     }
 
     // ========================================================
     // DATA ID 21
     // ========================================================
 
-    if (dataID == 21)
+    if (dataID == 99) //kPaneldimmer1)
     {
         int dimvalue = messenger.readInt32Arg();
 
-        analogWrite(4, dimvalue);
-
+        analogWrite(3, dimvalue);
+/*
         int brightness = round(dimvalue / 40);
 
         if (olddimvalue != brightness)
         {
             olddimvalue = brightness;
         }
-
-        digitalWrite(13, HIGH);
+*/
+       
     }
 
     // ========================================================

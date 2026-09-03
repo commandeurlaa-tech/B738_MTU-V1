@@ -171,6 +171,39 @@ const float THROTTLE_2_AT_SPEED = 3000.0;
 const float THROTTLE_2_AT_ACCEL = 1500.0;
 
 // ============================================================
+// THROTTLE A/T SMOOTHING
+// ============================================================
+//
+// PMDG/SPAD.next levert de throttlepositie in zichtbare stapjes.
+// Deze low-pass/interpolatie maakt daar aan de motorzijde een
+// vloeiend bewegend doel van, zonder voorbij de PMDG-doelpositie
+// te voorspellen.
+//
+// Lager = directer, maar meer kans op zichtbaar stappen.
+// Hoger = vloeiender, maar iets meer vertraging.
+//
+// Eerste testwaarde: 350 ms.
+//
+const float THROTTLE_AT_SMOOTHING_MS = 250.0; //150-250
+
+// Minimale wijziging in het berekende motor-doel voordat
+// AccelStepper een nieuw target krijgt.
+// Dit voorkomt voortdurende mini-correcties die hoorbaar kraken.
+const long THROTTLE_TARGET_DEADBAND_STEPS = 7; //4 (5-6 stappen = 1% van 3200 stappen)
+
+float throttle1SmoothedTarget = 0.0;
+float throttle2SmoothedTarget = 0.0;
+
+unsigned long throttle1SmoothingLastMs = 0;
+unsigned long throttle2SmoothingLastMs = 0;
+
+bool throttle1SmoothingInitialized = false;
+bool throttle2SmoothingInitialized = false;
+
+long throttle1LastCommandedTarget = 0;
+long throttle2LastCommandedTarget = 0;
+
+// ============================================================
 // SPEEDBRAKE
 // ============================================================
 //
@@ -192,10 +225,10 @@ const float THROTTLE_2_AT_ACCEL = 1500.0;
 //
 // ============================================================
 
-const float SPEED_BRAKE_ARMED_MIN = 0.60;
-const float SPEED_BRAKE_ARMED_MAX = 0.65;
+const float SPEED_BRAKE_ARMED_MIN = 0.55; //060
+const float SPEED_BRAKE_ARMED_MAX = 0.60;  //0.65
 
-const float SPEED_BRAKE_DEPLOY_THRESHOLD = 0.90;
+const float SPEED_BRAKE_DEPLOY_THRESHOLD = 0.85; //0.90
 const float SPEED_BRAKE_RETRACT_THRESHOLD = 0.59;
 
 const long SPEED_BRAKE_DOWN_STEPS = 0;
@@ -637,7 +670,17 @@ void initSteppers()
     lastThrottle2Position = 0.0;
     throttle1PositionReceived = false;
     throttle2PositionReceived = false;
+    throttle1TargetSteps = 0;
     throttle2TargetSteps = 0;
+
+    throttle1SmoothedTarget = 0.0;
+    throttle2SmoothedTarget = 0.0;
+    throttle1SmoothingLastMs = 0;
+    throttle2SmoothingLastMs = 0;
+    throttle1SmoothingInitialized = false;
+    throttle2SmoothingInitialized = false;
+    throttle1LastCommandedTarget = 0;
+    throttle2LastCommandedTarget = 0;
 
     lastSpeedBrakePosition = 0.0;
     speedBrakePositionReceived = false;
@@ -922,6 +965,15 @@ if (THROTTLE_1_CALIBRATION)
             {
                 wasActive = false;
 
+                if (i == THROTTLE_1)
+                {
+                    throttle1SmoothingInitialized = false;
+                }
+                else
+                {
+                    throttle2SmoothingInitialized = false;
+                }
+
                 steppers[i]
                     .disableOutputs();
 
@@ -985,6 +1037,18 @@ if (THROTTLE_1_CALIBRATION)
                     steppers[THROTTLE_1]
                         .setAcceleration(
                             THROTTLE_1_AT_ACCEL);
+
+                    throttle1SmoothedTarget =
+                        (float)currentTarget;
+
+                    throttle1SmoothingLastMs =
+                        millis();
+
+                    throttle1SmoothingInitialized =
+                        true;
+
+                    throttle1LastCommandedTarget =
+                        currentTarget;
                 }
             }
             else
@@ -1011,6 +1075,18 @@ if (THROTTLE_1_CALIBRATION)
                     steppers[THROTTLE_2]
                         .setAcceleration(
                             THROTTLE_2_AT_ACCEL);
+
+                    throttle2SmoothedTarget =
+                        (float)currentTarget;
+
+                    throttle2SmoothingLastMs =
+                        millis();
+
+                    throttle2SmoothingInitialized =
+                        true;
+
+                    throttle2LastCommandedTarget =
+                        currentTarget;
                 }
             }
 
@@ -1043,11 +1119,117 @@ if (THROTTLE_1_CALIBRATION)
                 }
             }
 
-            steppers[i]
-                .enableOutputs();
+            // ------------------------------------------------
+            // PMDG target vloeiend interpoleren
+            // ------------------------------------------------
+
+            float &smoothedTarget =
+                (i == THROTTLE_1)
+                    ? throttle1SmoothedTarget
+                    : throttle2SmoothedTarget;
+
+            unsigned long &lastSmoothMs =
+                (i == THROTTLE_1)
+                    ? throttle1SmoothingLastMs
+                    : throttle2SmoothingLastMs;
+
+            bool &smoothingInitialized =
+                (i == THROTTLE_1)
+                    ? throttle1SmoothingInitialized
+                    : throttle2SmoothingInitialized;
+
+            unsigned long now =
+                millis();
+
+            if (!smoothingInitialized)
+            {
+                smoothedTarget =
+                    (float)target;
+
+                lastSmoothMs =
+                    now;
+
+                smoothingInitialized =
+                    true;
+            }
+
+            unsigned long elapsed =
+                now - lastSmoothMs;
+
+            if (elapsed > 0)
+            {
+                float alpha =
+                    (float)elapsed /
+                    (THROTTLE_AT_SMOOTHING_MS +
+                     (float)elapsed);
+
+                smoothedTarget +=
+                    ((float)target - smoothedTarget) *
+                    alpha;
+
+                lastSmoothMs =
+                    now;
+            }
+
+            // Als we praktisch op het echte PMDG-doel zitten,
+            // exact vastzetten zodat er geen restfout blijft.
+            float remaining =
+                (float)target - smoothedTarget;
+
+            if (remaining > -0.5 &&
+                remaining < 0.5)
+            {
+                smoothedTarget =
+                    (float)target;
+            }
+
+            long commandedTarget;
+
+            if (smoothedTarget >= 0.0)
+            {
+                commandedTarget =
+                    (long)(smoothedTarget + 0.5);
+            }
+            else
+            {
+                commandedTarget =
+                    (long)(smoothedTarget - 0.5);
+            }
+
+            long &lastCommandedTarget =
+                (i == THROTTLE_1)
+                    ? throttle1LastCommandedTarget
+                    : throttle2LastCommandedTarget;
+
+            long commandDelta =
+                commandedTarget - lastCommandedTarget;
+
+            if (commandDelta < 0)
+            {
+                commandDelta = -commandDelta;
+            }
+
+            // Alleen een nieuw target geven wanneer de wijziging
+            // groot genoeg is. Als het echte PMDG-doel praktisch
+            // bereikt is, altijd exact eindigen op dat doel.
+            bool nearFinalTarget =
+                (target - commandedTarget <= THROTTLE_TARGET_DEADBAND_STEPS &&
+                 target - commandedTarget >= -THROTTLE_TARGET_DEADBAND_STEPS);
+
+            if (commandDelta >= THROTTLE_TARGET_DEADBAND_STEPS ||
+                nearFinalTarget)
+            {
+                lastCommandedTarget =
+                    nearFinalTarget
+                        ? target
+                        : commandedTarget;
+
+                steppers[i]
+                    .moveTo(lastCommandedTarget);
+            }
 
             steppers[i]
-                .moveTo(target);
+                .enableOutputs();
 
             steppers[i]
                 .run();
