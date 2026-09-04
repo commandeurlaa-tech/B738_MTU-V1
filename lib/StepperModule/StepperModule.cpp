@@ -184,12 +184,12 @@ const float THROTTLE_2_AT_ACCEL = 1500.0;
 //
 // Eerste testwaarde: 350 ms.
 //
-const float THROTTLE_AT_SMOOTHING_MS = 250.0; //150-250
+const float THROTTLE_AT_SMOOTHING_MS = 150.0; //150-250
 
 // Minimale wijziging in het berekende motor-doel voordat
 // AccelStepper een nieuw target krijgt.
 // Dit voorkomt voortdurende mini-correcties die hoorbaar kraken.
-const long THROTTLE_TARGET_DEADBAND_STEPS = 7; //4 (5-6 stappen = 1% van 3200 stappen)
+const long THROTTLE_TARGET_DEADBAND_STEPS = 8; //4 (5-6 stappen = 1% van 3200 stappen)
 
 float throttle1SmoothedTarget = 0.0;
 float throttle2SmoothedTarget = 0.0;
@@ -225,10 +225,10 @@ long throttle2LastCommandedTarget = 0;
 //
 // ============================================================
 
-const float SPEED_BRAKE_ARMED_MIN = 0.55; //060
-const float SPEED_BRAKE_ARMED_MAX = 0.60;  //0.65
+const float SPEED_BRAKE_ARMED_MIN = 0.60; //060
+const float SPEED_BRAKE_ARMED_MAX = 0.65;  //0.65
 
-const float SPEED_BRAKE_DEPLOY_THRESHOLD = 0.85; //0.90
+const float SPEED_BRAKE_DEPLOY_THRESHOLD = 0.90 ; //0.90
 const float SPEED_BRAKE_RETRACT_THRESHOLD = 0.59;
 
 const long SPEED_BRAKE_DOWN_STEPS = 0;
