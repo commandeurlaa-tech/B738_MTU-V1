@@ -78,6 +78,12 @@ float lastTrimIndicatorValue = 0.0;
 
 bool trimIndicatorValueReceived = false;
 
+// Simulatoractivatie: bij boot blijven alle drivers disabled.
+// Homing start pas na de eerste geldige trim-indicatorwaarde.
+bool simulatorActive = false;
+bool trimHomingStartedAfterSimulator = false;
+
+
 // Doelpositie in stepper-stappen
 long trimIndicatorTarget = 0;
 
@@ -184,12 +190,12 @@ const float THROTTLE_2_AT_ACCEL = 1500.0;
 //
 // Eerste testwaarde: 350 ms.
 //
-const float THROTTLE_AT_SMOOTHING_MS = 150.0; //150-250
+const float THROTTLE_AT_SMOOTHING_MS = 200.0;
 
 // Minimale wijziging in het berekende motor-doel voordat
 // AccelStepper een nieuw target krijgt.
 // Dit voorkomt voortdurende mini-correcties die hoorbaar kraken.
-const long THROTTLE_TARGET_DEADBAND_STEPS = 8; //4 (5-6 stappen = 1% van 3200 stappen)
+const long THROTTLE_TARGET_DEADBAND_STEPS = 4;
 
 float throttle1SmoothedTarget = 0.0;
 float throttle2SmoothedTarget = 0.0;
@@ -225,10 +231,10 @@ long throttle2LastCommandedTarget = 0;
 //
 // ============================================================
 
-const float SPEED_BRAKE_ARMED_MIN = 0.60; //060
-const float SPEED_BRAKE_ARMED_MAX = 0.65;  //0.65
+const float SPEED_BRAKE_ARMED_MIN = 0.60;
+const float SPEED_BRAKE_ARMED_MAX = 0.65;
 
-const float SPEED_BRAKE_DEPLOY_THRESHOLD = 0.90 ; //0.90
+const float SPEED_BRAKE_DEPLOY_THRESHOLD = 0.90;
 const float SPEED_BRAKE_RETRACT_THRESHOLD = 0.59;
 
 const long SPEED_BRAKE_DOWN_STEPS = 0;
@@ -701,13 +707,11 @@ void initSteppers()
         stepperConfig[TRIM_INDICATOR_2].acceleration);
     needle2Standalone.setCurrentPosition(0);
     needle2Standalone.disableOutputs();
-
     // --------------------------------------------------------
-    // Start homing
+    // Homing wordt uitgesteld tot MSFS/SPAD.next actief is.
     // --------------------------------------------------------
-
-    startTrimIndicatorHoming();
-    startTrimIndicator2Homing();
+    simulatorActive = false;
+    trimHomingStartedAfterSimulator = false;
 
    
 }
@@ -736,6 +740,43 @@ void startTrimDeceleration()
 
 void updateSteppers()
 {
+    // ========================================================
+    // WACHTEN OP MSFS / SPAD.NEXT
+    // ========================================================
+
+    if (!simulatorActive)
+    {
+        if (!trimIndicatorValueReceived)
+        {
+            // Geen simulatorgegevens: alle motoren stil/vrij.
+            stopTrimTimer();
+            digitalWrite(TRIM_ENA_PIN, HIGH);
+
+            for (int i = 0; i < NUM_STEPPERS; i++)
+            {
+                if (i == TRIM_INDICATOR_2)
+                {
+                    continue;
+                }
+
+                steppers[i].disableOutputs();
+            }
+
+            needle2Standalone.disableOutputs();
+            return;
+        }
+
+        simulatorActive = true;
+    }
+
+    // Eerste simulatorcontact: éénmalig beide needles homen.
+    if (!trimHomingStartedAfterSimulator)
+    {
+        startTrimIndicatorHoming();
+        startTrimIndicator2Homing();
+        trimHomingStartedAfterSimulator = true;
+    }
+
     // ========================================================
     // TRIM INDICATOR 1 HOMING
     // ========================================================
