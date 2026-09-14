@@ -14,7 +14,7 @@ const int TRIM_INDICATOR_HOME_PIN = 14;
 const bool TRIM_INDICATOR_GESPIEGELD = true;
 
 // Schakelaar wordt iets vóór het echte fysieke nulpunt geraakt.
-const long TRIM_INDICATOR_HOME_OFFSET = 70;
+const long TRIM_INDICATOR_HOME_OFFSET = 180 //70
 
 // Homing snelheid
 const float TRIM_INDICATOR_HOME_SPEED = 500.0;
@@ -32,8 +32,8 @@ const int TRIM_INDICATOR_2_HOME_PIN = 15;
 // Needle 2 draait tegengesteld aan Needle 1
 const bool TRIM_INDICATOR_2_GESPIEGELD = false;
 
-// Voorlopig dezelfde offset als Needle 1
-const long TRIM_INDICATOR_2_HOME_OFFSET =  10;
+// Offset voor juiste aqanwijzing
+const long TRIM_INDICATOR_2_HOME_OFFSET =  90; //50
 
 const float TRIM_INDICATOR_2_HOME_SPEED = 500.0;
 // ============================================================
@@ -160,7 +160,7 @@ const float THROTTLE_1_PMDG_FULL = 85.0;
 const long THROTTLE_1_FULL_STEPS = 3200;
 
 const float THROTTLE_1_AT_SPEED = 3000.0;
-const float THROTTLE_1_AT_ACCEL = 1500.0;
+const float THROTTLE_1_AT_ACCEL = 3500.0;
 
 // Laatst berekende Throttle 1 stepperpositie.
 long throttle1TargetSteps = 0;
@@ -174,7 +174,7 @@ const float THROTTLE_2_PMDG_FULL = 85.0;
 const long THROTTLE_2_FULL_STEPS = 3200;
 
 const float THROTTLE_2_AT_SPEED = 3000.0;
-const float THROTTLE_2_AT_ACCEL = 1500.0;
+const float THROTTLE_2_AT_ACCEL = 3500.0;
 
 // ============================================================
 // THROTTLE A/T SMOOTHING
@@ -190,12 +190,12 @@ const float THROTTLE_2_AT_ACCEL = 1500.0;
 //
 // Eerste testwaarde: 350 ms.
 //
-const float THROTTLE_AT_SMOOTHING_MS = 200.0;
+const float THROTTLE_AT_SMOOTHING_MS = 400;  //200.0;
 
 // Minimale wijziging in het berekende motor-doel voordat
 // AccelStepper een nieuw target krijgt.
 // Dit voorkomt voortdurende mini-correcties die hoorbaar kraken.
-const long THROTTLE_TARGET_DEADBAND_STEPS = 4;
+const long THROTTLE_TARGET_DEADBAND_STEPS = 12; //6;// 4;
 
 float throttle1SmoothedTarget = 0.0;
 float throttle2SmoothedTarget = 0.0;
@@ -277,16 +277,48 @@ void updateThrottle1Calibration();
 // TRIM WHEEL
 // ============================================================
 
-const float TRIM_WHEEL_SPEED = 10500.0;
+// Trim wheel - eerste afstelling na reparatie motordraad.
+// TB6600: 8 microsteps / 1600 pulses per omwenteling.
+// Rustige acceleratie/deceleratie om de mechanische 'klap' te vermijden.
+// Yoke: huidige goed werkende afstelling.
+const float TRIM_WHEEL_YOKE_SPEED = 10500.0;
+const float TRIM_WHEEL_YOKE_START_SPEED = 1400.0;
 
-const float TRIM_WHEEL_ACCEL = 80000.0;
-const float TRIM_WHEEL_DECEL = 50000.0;
+// Autopilot: iets sneller om de visuele achterstand t.o.v.
+// het cockpit-trimwiel in te halen.
+const float TRIM_WHEEL_AP_SPEED = 13500.0;
+const float TRIM_WHEEL_AP_START_SPEED = 2500.0;
+
+const float TRIM_WHEEL_ACCEL = 18000.0;
+const float TRIM_WHEEL_DECEL = 24000.0;  
 
 bool trimStopping = false;
 
 unsigned long trimStopUpdateTime = 0;
 
-const unsigned long TRIM_STOP_TIMEOUT_MS = 80;
+// 75 ms blijft ruim genoeg om normale trim-updates te overbruggen,
+// maar laat het wiel merkbaar sneller afremmen na loslaten.
+// Yoke moet na loslaten snel stoppen.
+const unsigned long TRIM_YOKE_STOP_TIMEOUT_MS = 75;
+
+// AP krijgt langer de tijd om de grotere cockpit-draai te volgen.
+const unsigned long TRIM_AP_STOP_TIMEOUT_MS = 500;
+/*Voor het finetunen van de AP zou ik in eerste instantie maar één parameter 
+veranderen:
+const unsigned long TRIM_AP_STOP_TIMEOUT_MS = 500;
+Die bepaalt nu vooral hoe groot de totale fysieke draai wordt na een AP-trimactie.
+
+Fysieke wiel draait te weinig → verhogen, bijvoorbeeld 550 of 600.
+Fysieke wiel draait te ver → verlagen, bijvoorbeeld 450 of 400.
+Startmoment goed? Dan TRIM_START_DELTA = 0.0033 niet veranderen.
+Ik zou met stapjes van 25–50 ms werken zodra je in de buurt zit.
+
+De TRIM_WHEEL_AP_SPEED = 13500 zou ik alleen aanpassen als de draaisnelheid zelf 
+zichtbaar afwijkt van het cockpitwiel. Dus: draait het fysieke wiel gedurende de 
+beweging duidelijk langzamer/sneller, dan pas aan AP_SPEED draaien.
+Kortom: draaihoek → TRIM_AP_STOP_TIMEOUT_MS; draaisnelheid → TRIM_WHEEL_AP_SPEED; 
+startmoment → TRIM_START_DELTA. Zo kunnen we de drie eigenschappen onafhankelijk 
+finetunen.*/
 
 float trimAccumulatedDelta = 0.0;
 
@@ -306,6 +338,16 @@ const bool TRIM_WHEEL_GESPIEGELD = true;
 // ============================================================
 
 const float TRIM_DEADBAND = 0.000100;
+
+// Het fysieke trimwiel start pas als de opgetelde verandering
+// van ELEVATOR TRIM POSITION deze drempel bereikt.
+// Dit filtert kleine trimcorrecties waarbij het cockpitwiel
+// zichtbaar stil blijft.
+const float TRIM_START_DELTA = 0.003300;
+
+// Handmatige trimstatus uit SPAD Local Variable TRIM_MANUAL:
+//  1 = yoke UP, -1 = yoke DOWN, 0 = geen handmatige trim.
+int manualTrimState = 0;
 
 // ============================================================
 // PINNEN TRIM WHEEL
@@ -409,11 +451,29 @@ unsigned long lastTrimAccelerationUpdate = 0;
 //
 // Timer2:
 // CPU = 16 MHz
-// prescaler = 8
-// timer clock = 2 MHz
+// prescaler = 64
+// timer clock = 250 kHz
 //
 // Twee interrupts per volledige STEP.
 //
+// ============================================================
+
+float getTrimWheelMaxSpeed()
+{
+    return (manualTrimState != 0)
+        ? TRIM_WHEEL_YOKE_SPEED
+        : TRIM_WHEEL_AP_SPEED;
+}
+
+float getTrimWheelStartSpeed()
+{
+    return (manualTrimState != 0)
+        ? TRIM_WHEEL_YOKE_START_SPEED
+        : TRIM_WHEEL_AP_START_SPEED;
+}
+
+// ============================================================
+// TIMER2 SNELHEID
 // ============================================================
 
 void setTrimTimerSpeed(float stepsPerSecond)
@@ -421,14 +481,17 @@ void setTrimTimerSpeed(float stepsPerSecond)
     if (stepsPerSecond < 1.0)
         stepsPerSecond = 1.0;
 
-    if (stepsPerSecond > TRIM_WHEEL_SPEED)
-        stepsPerSecond = TRIM_WHEEL_SPEED;
+    float maxSpeed =
+        getTrimWheelMaxSpeed();
+
+    if (stepsPerSecond > maxSpeed)
+        stepsPerSecond = maxSpeed;
 
     float interruptFrequency =
         stepsPerSecond * 2.0;
 
     float ocr =
-        (2000000.0 / interruptFrequency) - 1.0;
+        (250000.0 / interruptFrequency) - 1.0;
 
     if (ocr < 1.0)
         ocr = 1.0;
@@ -464,14 +527,15 @@ void startTrimTimer(bool positiveDirection)
 
     trimStepHigh = false;
 
-    // Start langzaam
-    trimCurrentSpeed = 1000.0;
+    // Yoke en AP hebben ieder hun eigen startsnelheid.
+    trimCurrentSpeed =
+        getTrimWheelStartSpeed();
 
     float interruptFrequency =
         trimCurrentSpeed * 2.0;
 
     float ocr =
-        (2000000.0 / interruptFrequency) - 1.0;
+        (250000.0 / interruptFrequency) - 1.0;
 
     if (ocr < 1.0)
         ocr = 1.0;
@@ -490,8 +554,9 @@ void startTrimTimer(bool positiveDirection)
     // CTC mode
     TCCR2A |= (1 << WGM21);
 
-    // Prescaler 8
-    TCCR2B |= (1 << CS21);
+    // Prescaler 64
+    // Timer2 clock = 16 MHz / 64 = 250 kHz
+    TCCR2B |= (1 << CS22);
 
     // Compare A interrupt
     TIMSK2 |= (1 << OCIE2A);
@@ -620,7 +685,7 @@ void initSteppers()
         if (i == TRIM_WHEEL)
         {
             steppers[i].setMaxSpeed(
-                TRIM_WHEEL_SPEED);
+                TRIM_WHEEL_AP_SPEED);
 
             steppers[i].setAcceleration(
                 TRIM_WHEEL_ACCEL);
@@ -646,6 +711,7 @@ void initSteppers()
     oldTrim = 0.0;
 
     trimInitialized = false;
+
 
     trimTimerRunning = false;
 
@@ -1356,11 +1422,14 @@ if (THROTTLE_1_CALIBRATION)
                 trimCurrentSpeed +=
                     increase;
 
+                float maxSpeed =
+                    getTrimWheelMaxSpeed();
+
                 if (trimCurrentSpeed >
-                    TRIM_WHEEL_SPEED)
+                    maxSpeed)
                 {
                     trimCurrentSpeed =
-                        TRIM_WHEEL_SPEED;
+                        maxSpeed;
                 }
 
                 float speed =
@@ -1371,9 +1440,14 @@ if (THROTTLE_1_CALIBRATION)
                 setTrimTimerSpeed(speed);
             }
 
+            unsigned long trimStopTimeout =
+                (manualTrimState != 0)
+                    ? TRIM_YOKE_STOP_TIMEOUT_MS
+                    : TRIM_AP_STOP_TIMEOUT_MS;
+
             if (now -
                     lastTrimUpdateTime >=
-                TRIM_STOP_TIMEOUT_MS)
+                trimStopTimeout)
             {
                 startTrimDeceleration();
             }
@@ -1882,6 +1956,20 @@ void updateThrottle2(float value)
 // ============================================================
 // TRIM WHEEL
 // ============================================================
+//
+// Bron: SIMCONNECT:ELEVATOR TRIM POSITION via kTrimWheel = 26.
+// De needles blijven apart op ELEVATOR TRIM INDICATOR.
+// ============================================================
+
+void updateManualTrim(int state)
+{
+    if (state > 0)
+        manualTrimState = 1;
+    else if (state < 0)
+        manualTrimState = -1;
+    else
+        manualTrimState = 0;
+}
 
 void updateTrimWheel(
     float trimValue)
@@ -1926,14 +2014,28 @@ void updateTrimWheel(
 
     trimAccumulatedDelta += delta;
 
-    if (trimAccumulatedDelta > -TRIM_DEADBAND &&
-        trimAccumulatedDelta < TRIM_DEADBAND)
+    // Yoke actief: vrijwel direct reageren (kleine deadband).
+    // Geen yoke: vanuit stilstand eerst 0.0033 opbouwen voor AP.
+    float activeThreshold =
+        (manualTrimState != 0 || trimTimerRunning)
+            ? TRIM_DEADBAND
+            : TRIM_START_DELTA;
+
+    if (trimAccumulatedDelta > -activeThreshold &&
+        trimAccumulatedDelta < activeThreshold)
     {
         return;
     }
 
     bool positiveDirection =
         (trimAccumulatedDelta > 0.0);
+
+    // Fysieke draairichting van het trimwiel.
+    if (TRIM_WHEEL_GESPIEGELD)
+    {
+        positiveDirection =
+            !positiveDirection;
+    }
 
     trimAccumulatedDelta = 0.0;
     // ========================================================
@@ -2488,14 +2590,14 @@ void updateTrimIndicator(float indicatorValue)
     const float tiValues[15] =
         {
             -0.2269650, // 1
-            -0.1369530, // 2
-            -0.0538750, // 3
-            0.0186820,  // 4
-            0.0987340,  // 5
-            0.1942440,  // 6
-            0.2679350,  // 7
-            0.3421610,  // 8
-            0.4149350,  // 9
+            -0.126376327, //-0.1369530, // 2
+          -0.061875929, //  -0.0538750, // 3
+           0.0152273539,// 0.0186820,  // 4
+           0.0943696610,  //0.0987340,  // 5
+           0.1729090516, // 0.1942440,  // 6
+          0.2565998493, //  0.2679350,  // 7
+           0.3384707523,// 0.3421610,  // 8
+            0.4149350 ,  // 9
             0.4940770,  // 10
             0.5665200,  // 11
             0.6514510,  // 12

@@ -338,7 +338,16 @@ void onIncomingData()
 
         updateTrimWheel(trimValue);
     }
+// ========================================================
+// MANUAL TRIM / YOKE
+// ========================================================
 
+if (dataID == kManualTrim)
+{
+    int manualTrim = messenger.readInt32Arg();
+
+    updateManualTrim(manualTrim);
+}
     // ========================================================
     // TRIM INDICATOR
     // ========================================================

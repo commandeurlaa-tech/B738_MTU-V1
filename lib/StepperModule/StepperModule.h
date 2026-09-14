@@ -26,6 +26,7 @@ struct StepperConfig
 void initSteppers();
 void updateSteppers();
 void updateTrimWheel(float trimValue);
+void updateManualTrim(int state);
 void updateTrimIndicator(float indicatorValue);
 
 void setStepperTarget(int index, long position);
