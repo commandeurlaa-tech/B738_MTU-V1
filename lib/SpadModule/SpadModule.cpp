@@ -163,6 +163,12 @@ void onIdentifyRequest()
     messenger.sendCmdArg("LOCAL:TRIM_MANUAL");
     messenger.sendCmdEnd();
 
+    messenger.sendCmdStart(kCommand);
+    messenger.sendCmdArg("SUBSCRIBE");
+    messenger.sendCmdArg(kSimOnGround);
+    messenger.sendCmdArg("SIMCONNECT:SIM ON GROUND");
+    messenger.sendCmdEnd();
+
     //----- CREATE ENCODERS --------------------------------------------------------------
 
     //----- CREATE BUTTONS-----------------------------------------------------
@@ -255,7 +261,6 @@ void onIdentifyRequest()
     messenger.sendCmdArg(F(""));                // Behaviour
     messenger.sendCmdEnd();
 
-    
     messenger.sendCmdStart(kRequest);
     messenger.sendCmdArg(F("INPUT"));
     messenger.sendCmdArg(22);                 // This is the button ID

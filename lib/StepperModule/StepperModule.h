@@ -40,6 +40,6 @@ long getStepperPosition(int index);
 bool isStepperEnabled(int index);
 
 void updateSpeedBrake(float value);
-
+void updateSimOnGround(bool onGround);
 
 #endif

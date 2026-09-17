@@ -232,20 +232,19 @@ void onIncomingData()
     // DATA ID 21
     // ========================================================
 
-    if (dataID == 99) //kPaneldimmer1)
+    if (dataID == 99) // kPaneldimmer1)
     {
         int dimvalue = messenger.readInt32Arg();
 
         analogWrite(3, dimvalue);
-/*
-        int brightness = round(dimvalue / 40);
+        /*
+                int brightness = round(dimvalue / 40);
 
-        if (olddimvalue != brightness)
-        {
-            olddimvalue = brightness;
-        }
-*/
-       
+                if (olddimvalue != brightness)
+                {
+                    olddimvalue = brightness;
+                }
+        */
     }
 
     // ========================================================
@@ -338,16 +337,16 @@ void onIncomingData()
 
         updateTrimWheel(trimValue);
     }
-// ========================================================
-// MANUAL TRIM / YOKE
-// ========================================================
+    // ========================================================
+    // MANUAL TRIM / YOKE
+    // ========================================================
 
-if (dataID == kManualTrim)
-{
-    int manualTrim = messenger.readInt32Arg();
+    if (dataID == kManualTrim)
+    {
+        int manualTrim = messenger.readInt32Arg();
 
-    updateManualTrim(manualTrim);
-}
+        updateManualTrim(manualTrim);
+    }
     // ========================================================
     // TRIM INDICATOR
     // ========================================================
@@ -391,5 +390,15 @@ if (dataID == kManualTrim)
             messenger.readFloatArg();
 
         updateSpeedBrake(spoilerValue);
+    }
+
+    // ========================================================
+    // SIM ON GROUND
+    // ========================================================
+
+    if (dataID == kSimOnGround)
+    {
+        bool onGround = messenger.readBoolArg();
+        updateSimOnGround(onGround);
     }
 }

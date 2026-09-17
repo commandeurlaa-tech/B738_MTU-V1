@@ -14,7 +14,7 @@ const int TRIM_INDICATOR_HOME_PIN = 14;
 const bool TRIM_INDICATOR_GESPIEGELD = true;
 
 // Schakelaar wordt iets vóór het echte fysieke nulpunt geraakt.
-const long TRIM_INDICATOR_HOME_OFFSET = 180 //70
+const long TRIM_INDICATOR_HOME_OFFSET = 180 ;//70
 
 // Homing snelheid
 const float TRIM_INDICATOR_HOME_SPEED = 500.0;
@@ -231,8 +231,8 @@ long throttle2LastCommandedTarget = 0;
 //
 // ============================================================
 
-const float SPEED_BRAKE_ARMED_MIN = 0.60;
-const float SPEED_BRAKE_ARMED_MAX = 0.65;
+const float SPEED_BRAKE_ARMED_MIN = 0.56 ; //0.60;
+const float SPEED_BRAKE_ARMED_MAX = 0.61;  //0.65;
 
 const float SPEED_BRAKE_DEPLOY_THRESHOLD = 0.90;
 const float SPEED_BRAKE_RETRACT_THRESHOLD = 0.59;
@@ -246,6 +246,14 @@ const float SPEED_BRAKE_ACCEL = 1000.0;
 float lastSpeedBrakePosition = 0.0;
 bool speedBrakePositionReceived = false;
 bool speedBrakeDeployed = false;
+
+// Flight-cycle state voor speedbrake auto-deploy.
+// Een nieuwe motorische deploy is alleen toegestaan na een airborne fase
+// en vervolgens touchdown. Dit blokkeert een handmatige FULL UP gate-check.
+bool simOnGround = true;
+bool simOnGroundReceived = false;
+bool airborneSeen = false;
+bool landingAutoDeployOccurred = false;
 
 // ============================================================
 // FUNCTION PROTOTYPES
@@ -268,6 +276,7 @@ long throttlePercentToSteps(float value,
                             float fullPercent,
                             long fullSteps);
 void updateSpeedBrake(float value);
+void updateSimOnGround(bool onGround);
 long speedBrakePositionToSteps(float value);
 
 void startThrottle1Calibration();
@@ -757,6 +766,10 @@ void initSteppers()
     lastSpeedBrakePosition = 0.0;
     speedBrakePositionReceived = false;
     speedBrakeDeployed = false;
+    simOnGround = true;
+    simOnGroundReceived = false;
+    airborneSeen = false;
+    landingAutoDeployOccurred = false;
 
     // --------------------------------------------------------
     // Needle 2 standalone initialiseren
@@ -977,6 +990,29 @@ if (THROTTLE_1_CALIBRATION)
             bool deployed =
                 (target == SPEED_BRAKE_UP_STEPS);
 
+            // Een NIEUWE automatische deploy naar UP mag alleen na:
+            // 1. geldige SIM ON GROUND-data,
+            // 2. een airborne fase in deze vlucht,
+            // 3. touchdown / on-ground.
+            //
+            // Daardoor kan een handmatige FULL UP gate-check de motor
+            // niet meer activeren. Een reeds automatische deploy blijft
+            // wel de bestaande PMDG retract-logica volgen.
+            bool landingDeployAllowed =
+                simOnGroundReceived &&
+                simOnGround &&
+                airborneSeen;
+
+            if (!speedBrakeDeployed &&
+                deployed &&
+                !landingDeployAllowed)
+            {
+                steppers[SPEED_BRAKE]
+                    .disableOutputs();
+
+                continue;
+            }
+
             // Handmatige DOWN:
             // als we niet automatisch deployed waren, mag de motor
             // niet opnieuw richting DOWN gaan lopen. Synchroniseer
@@ -1001,6 +1037,11 @@ if (THROTTLE_1_CALIBRATION)
             {
                 speedBrakeDeployed =
                     deployed;
+
+                if (deployed)
+                {
+                    landingAutoDeployOccurred = true;
+                }
 
                 steppers[SPEED_BRAKE]
                     .setMaxSpeed(
@@ -1036,6 +1077,18 @@ if (THROTTLE_1_CALIBRATION)
                     steppers[SPEED_BRAKE]
                         .setCurrentPosition(
                             SPEED_BRAKE_DOWN_STEPS);
+
+                    // Pas na een echte landing auto-deploy EN de
+                    // daaropvolgende retract op de grond is de
+                    // vluchtcyclus klaar. Zo missen we de deploy niet
+                    // als SIM ON GROUND iets eerder binnenkomt dan 1.00.
+                    if (landingAutoDeployOccurred &&
+                        simOnGroundReceived &&
+                        simOnGround)
+                    {
+                        airborneSeen = false;
+                        landingAutoDeployOccurred = false;
+                    }
                 }
             }
 
@@ -1911,6 +1964,23 @@ void updateSpeedBrake(float value)
         true;
 
     // Het doel wordt in updateSteppers() uitgevoerd.
+}
+
+// ============================================================
+// SIM ON GROUND
+// ============================================================
+
+void updateSimOnGround(bool onGround)
+{
+    simOnGround = onGround;
+    simOnGroundReceived = true;
+
+    // Zodra het toestel airborne is geweest, blijft deze vlag staan
+    // tot een echte landing auto-deploy volledig is ingetrokken.
+    if (!onGround)
+    {
+        airborneSeen = true;
+    }
 }
 
 // ============================================================
