@@ -235,7 +235,7 @@ const float SPEED_BRAKE_ARMED_MIN = 0.56 ; //0.60;
 const float SPEED_BRAKE_ARMED_MAX = 0.61;  //0.65;
 
 const float SPEED_BRAKE_DEPLOY_THRESHOLD = 0.90;
-const float SPEED_BRAKE_RETRACT_THRESHOLD = 0.59;
+const float SPEED_BRAKE_RETRACT_THRESHOLD = 0.80;
 
 const long SPEED_BRAKE_DOWN_STEPS = 0;
 const long SPEED_BRAKE_UP_STEPS = 1600;
@@ -247,13 +247,28 @@ float lastSpeedBrakePosition = 0.0;
 bool speedBrakePositionReceived = false;
 bool speedBrakeDeployed = false;
 
-// Flight-cycle state voor speedbrake auto-deploy.
-// Een nieuwe motorische deploy is alleen toegestaan na een airborne fase
-// en vervolgens touchdown. Dit blokkeert een handmatige FULL UP gate-check.
+// Expliciete flight-cycle state voor speedbrake auto-deploy.
+// Een automatische deploy is ALLEEN toegestaan in LANDED:
+// eerst bevestigde GROUND, daarna 5 s AIRBORNE, daarna touchdown.
+enum SpeedBrakeFlightState
+{
+    SPEEDBRAKE_WAIT_FOR_GROUND = 0,
+    SPEEDBRAKE_GROUND,
+    SPEEDBRAKE_AIRBORNE,
+    SPEEDBRAKE_LANDED
+};
+
+SpeedBrakeFlightState speedBrakeFlightState = SPEEDBRAKE_WAIT_FOR_GROUND;
+
 bool simOnGround = true;
 bool simOnGroundReceived = false;
-bool airborneSeen = false;
 bool landingAutoDeployOccurred = false;
+
+// SIM ON GROUND moet minimaal 5 seconden onafgebroken FALSE zijn
+// voordat GROUND -> AIRBORNE geldig wordt.
+const unsigned long AIRBORNE_CONFIRM_MS = 5000;
+bool airborneConfirmRunning = false;
+unsigned long airborneConfirmStartMs = 0;
 
 // ============================================================
 // FUNCTION PROTOTYPES
@@ -768,8 +783,10 @@ void initSteppers()
     speedBrakeDeployed = false;
     simOnGround = true;
     simOnGroundReceived = false;
-    airborneSeen = false;
+    speedBrakeFlightState = SPEEDBRAKE_WAIT_FOR_GROUND;
     landingAutoDeployOccurred = false;
+    airborneConfirmRunning = false;
+    airborneConfirmStartMs = 0;
 
     // --------------------------------------------------------
     // Needle 2 standalone initialiseren
@@ -819,6 +836,23 @@ void startTrimDeceleration()
 
 void updateSteppers()
 {
+    // ========================================================
+    // AIRBORNE BEVESTIGING
+    // ========================================================
+    // Alleen vanuit een eerder bevestigde GROUND-state kan een
+    // echte AIRBORNE-state ontstaan. Een losse FALSE tijdens het
+    // laden kan de flight-cycle daardoor nooit activeren.
+    if (speedBrakeFlightState == SPEEDBRAKE_GROUND &&
+        simOnGroundReceived &&
+        !simOnGround &&
+        airborneConfirmRunning &&
+        millis() - airborneConfirmStartMs >= AIRBORNE_CONFIRM_MS)
+    {
+        speedBrakeFlightState = SPEEDBRAKE_AIRBORNE;
+        airborneConfirmRunning = false;
+        airborneConfirmStartMs = 0;
+    }
+
     // ========================================================
     // WACHTEN OP MSFS / SPAD.NEXT
     // ========================================================
@@ -1001,7 +1035,7 @@ if (THROTTLE_1_CALIBRATION)
             bool landingDeployAllowed =
                 simOnGroundReceived &&
                 simOnGround &&
-                airborneSeen;
+                speedBrakeFlightState == SPEEDBRAKE_LANDED;
 
             if (!speedBrakeDeployed &&
                 deployed &&
@@ -1086,8 +1120,10 @@ if (THROTTLE_1_CALIBRATION)
                         simOnGroundReceived &&
                         simOnGround)
                     {
-                        airborneSeen = false;
+                        speedBrakeFlightState = SPEEDBRAKE_GROUND;
                         landingAutoDeployOccurred = false;
+                        airborneConfirmRunning = false;
+                        airborneConfirmStartMs = 0;
                     }
                 }
             }
@@ -1975,12 +2011,52 @@ void updateSimOnGround(bool onGround)
     simOnGround = onGround;
     simOnGroundReceived = true;
 
-    // Zodra het toestel airborne is geweest, blijft deze vlag staan
-    // tot een echte landing auto-deploy volledig is ingetrokken.
-    if (!onGround)
+    // De flight-cycle MOET beginnen met een bevestigde ground-state.
+    // Daardoor kan een FALSE/transient tijdens het laden nooit worden
+    // aangezien voor een echte vlucht.
+    if (speedBrakeFlightState == SPEEDBRAKE_WAIT_FOR_GROUND)
     {
-        airborneSeen = true;
+        if (onGround)
+        {
+            speedBrakeFlightState = SPEEDBRAKE_GROUND;
+            airborneConfirmRunning = false;
+            airborneConfirmStartMs = 0;
+        }
+        return;
     }
+
+    if (speedBrakeFlightState == SPEEDBRAKE_GROUND)
+    {
+        if (!onGround)
+        {
+            if (!airborneConfirmRunning)
+            {
+                airborneConfirmStartMs = millis();
+                airborneConfirmRunning = true;
+            }
+        }
+        else
+        {
+            // Nog steeds aan de gate / op de grond.
+            airborneConfirmRunning = false;
+            airborneConfirmStartMs = 0;
+        }
+        return;
+    }
+
+    if (speedBrakeFlightState == SPEEDBRAKE_AIRBORNE)
+    {
+        if (onGround)
+        {
+            // Geldige GROUND -> AIRBORNE -> GROUND overgang:
+            // vanaf nu mag een PMDG landing auto-deploy de motor sturen.
+            speedBrakeFlightState = SPEEDBRAKE_LANDED;
+        }
+        return;
+    }
+
+    // SPEEDBRAKE_LANDED blijft actief tot een echte automatische
+    // deploy gevolgd door retract naar DOWN de cyclus terugzet op GROUND.
 }
 
 // ============================================================
