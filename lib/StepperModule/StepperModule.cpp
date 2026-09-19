@@ -264,6 +264,13 @@ bool simOnGround = true;
 bool simOnGroundReceived = false;
 bool landingAutoDeployOccurred = false;
 
+// Retract-detectie wordt pas actief NADAT de fysieke auto-UP
+// volledig op 1600 stappen is aangekomen. Hierdoor kan de PMDG-
+// waardereeks tijdens de deploy de UP-beweging nooit afbreken.
+bool speedBrakeUpCompleted = false;
+bool speedBrakePostDeployLowSeen = false;
+bool speedBrakeRetractInProgress = false;
+
 // SIM ON GROUND moet minimaal 5 seconden onafgebroken FALSE zijn
 // voordat GROUND -> AIRBORNE geldig wordt.
 const unsigned long AIRBORNE_CONFIRM_MS = 5000;
@@ -785,6 +792,9 @@ void initSteppers()
     simOnGroundReceived = false;
     speedBrakeFlightState = SPEEDBRAKE_WAIT_FOR_GROUND;
     landingAutoDeployOccurred = false;
+    speedBrakeUpCompleted = false;
+    speedBrakePostDeployLowSeen = false;
+    speedBrakeRetractInProgress = false;
     airborneConfirmRunning = false;
     airborneConfirmStartMs = 0;
 
@@ -1017,6 +1027,11 @@ if (THROTTLE_1_CALIBRATION)
                 continue;
             }
 
+            // ------------------------------------------------
+            // FASE 1: bewezen v4 auto-UP logica.
+            // Deze blijft leidend totdat de fysieke hendel UP
+            // werkelijk heeft bereikt.
+            // ------------------------------------------------
             long target =
                 speedBrakePositionToSteps(
                     lastSpeedBrakePosition);
@@ -1024,107 +1039,165 @@ if (THROTTLE_1_CALIBRATION)
             bool deployed =
                 (target == SPEED_BRAKE_UP_STEPS);
 
-            // Een NIEUWE automatische deploy naar UP mag alleen na:
-            // 1. geldige SIM ON GROUND-data,
-            // 2. een airborne fase in deze vlucht,
-            // 3. touchdown / on-ground.
-            //
-            // Daardoor kan een handmatige FULL UP gate-check de motor
-            // niet meer activeren. Een reeds automatische deploy blijft
-            // wel de bestaande PMDG retract-logica volgen.
+            // Zodra de landing auto-UP eenmaal gestart is, moet die
+            // beweging eerst volledig naar 1600 stappen afgemaakt worden.
+            // PMDG kan tijdens de touchdown-sequentie tussentijds waarden
+            // onder 0.90 sturen. Die mogen de lopende UP-beweging niet
+            // terug naar DOWN commanderen.
+            if (speedBrakeDeployed &&
+                landingAutoDeployOccurred &&
+                !speedBrakeUpCompleted &&
+                !speedBrakeRetractInProgress)
+            {
+                target = SPEED_BRAKE_UP_STEPS;
+                deployed = true;
+            }
+
             bool landingDeployAllowed =
                 simOnGroundReceived &&
                 simOnGround &&
                 speedBrakeFlightState == SPEEDBRAKE_LANDED;
 
+            // Na één echte landing auto-deploy mag dezelfde cyclus
+            // geen tweede automatische UP meer starten.
+            if (!speedBrakeDeployed &&
+                deployed &&
+                landingAutoDeployOccurred &&
+                !speedBrakeRetractInProgress &&
+                steppers[SPEED_BRAKE].distanceToGo() == 0)
+            {
+                steppers[SPEED_BRAKE].disableOutputs();
+                continue;
+            }
+
             if (!speedBrakeDeployed &&
                 deployed &&
                 !landingDeployAllowed)
             {
-                steppers[SPEED_BRAKE]
-                    .disableOutputs();
-
+                steppers[SPEED_BRAKE].disableOutputs();
                 continue;
             }
 
-            // Handmatige DOWN:
-            // als we niet automatisch deployed waren, mag de motor
-            // niet opnieuw richting DOWN gaan lopen. Synchroniseer
-            // alleen de softwarepositie en laat ENA48 vrij.
+            // Handmatige DOWN buiten een automatische landing/retract:
+            // motor vrij laten en alleen softwarepositie synchroniseren.
             if (!speedBrakeDeployed &&
+                !speedBrakeRetractInProgress &&
                 target == SPEED_BRAKE_DOWN_STEPS)
             {
-                steppers[SPEED_BRAKE]
-                    .disableOutputs();
-
-                steppers[SPEED_BRAKE]
-                    .setCurrentPosition(
-                        SPEED_BRAKE_DOWN_STEPS);
-
+                steppers[SPEED_BRAKE].disableOutputs();
+                steppers[SPEED_BRAKE].setCurrentPosition(
+                    SPEED_BRAKE_DOWN_STEPS);
                 continue;
             }
 
-            // Automatische overgang DOWN <-> UP.
-            // Alleen een eerdere automatische deploy mag later
-            // een automatische retract naar DOWN veroorzaken.
-            if (deployed != speedBrakeDeployed)
+            // Start van de bewezen touchdown auto-UP.
+            if (deployed != speedBrakeDeployed &&
+                !speedBrakeRetractInProgress)
             {
-                speedBrakeDeployed =
-                    deployed;
+                speedBrakeDeployed = deployed;
 
                 if (deployed)
                 {
                     landingAutoDeployOccurred = true;
+                    speedBrakeUpCompleted = false;
+                    speedBrakePostDeployLowSeen = false;
                 }
 
-                steppers[SPEED_BRAKE]
-                    .setMaxSpeed(
-                        SPEED_BRAKE_SPEED);
-
-                steppers[SPEED_BRAKE]
-                    .setAcceleration(
-                        SPEED_BRAKE_ACCEL);
-
-                steppers[SPEED_BRAKE]
-                    .enableOutputs();
-
-                steppers[SPEED_BRAKE]
-                    .moveTo(target);
+                steppers[SPEED_BRAKE].setMaxSpeed(
+                    SPEED_BRAKE_SPEED);
+                steppers[SPEED_BRAKE].setAcceleration(
+                    SPEED_BRAKE_ACCEL);
+                steppers[SPEED_BRAKE].enableOutputs();
+                steppers[SPEED_BRAKE].moveTo(target);
             }
 
-            if (steppers[SPEED_BRAKE]
-                    .distanceToGo() != 0)
+            // ------------------------------------------------
+            // FASE 2: retract-detectie.
+            //
+            // Terwijl de fysieke hendel de touchdown auto-UP nog
+            // afmaakt, kan PMDG al lagere waarden (~0.35-0.52)
+            // uitsturen. Voor de MOTOR blijven die waarden genegeerd
+            // door de UP-latch hierboven, maar we onthouden ze wel
+            // voor de latere autostow/retract-sequentie.
+            // ------------------------------------------------
+            if (speedBrakeDeployed &&
+                landingAutoDeployOccurred &&
+                speedBrakeFlightState == SPEEDBRAKE_LANDED &&
+                !speedBrakeRetractInProgress &&
+                lastSpeedBrakePosition < SPEED_BRAKE_DEPLOY_THRESHOLD)
             {
-                steppers[SPEED_BRAKE]
-                    .enableOutputs();
+                speedBrakePostDeployLowSeen = true;
+            }
 
-                steppers[SPEED_BRAKE]
-                    .run();
+            // DOWN mag pas starten NADAT de fysieke auto-UP werkelijk
+            // 1600 stappen heeft bereikt. Als daarna de volgende
+            // PMDG 1.0 komt en we eerder een lage waarde hebben gezien,
+            // is dat de gemeten autostow/retract-sequentie.
+            if (speedBrakeDeployed &&
+                landingAutoDeployOccurred &&
+                speedBrakeUpCompleted &&
+                speedBrakeFlightState == SPEEDBRAKE_LANDED &&
+                !speedBrakeRetractInProgress &&
+                speedBrakePostDeployLowSeen &&
+                lastSpeedBrakePosition >= SPEED_BRAKE_DEPLOY_THRESHOLD)
+            {
+                speedBrakeRetractInProgress = true;
+                speedBrakeDeployed = false;
+
+                steppers[SPEED_BRAKE].setMaxSpeed(
+                    SPEED_BRAKE_SPEED);
+                steppers[SPEED_BRAKE].setAcceleration(
+                    SPEED_BRAKE_ACCEL);
+                steppers[SPEED_BRAKE].enableOutputs();
+                steppers[SPEED_BRAKE].moveTo(
+                    SPEED_BRAKE_DOWN_STEPS);
+            }
+
+            // Tijdens retract blijft DOWN geforceerd, ongeacht de
+            // tijdelijke PMDG 1.0-puls die de autostow markeert.
+            if (speedBrakeRetractInProgress)
+            {
+                if (steppers[SPEED_BRAKE].distanceToGo() != 0)
+                {
+                    steppers[SPEED_BRAKE].enableOutputs();
+                    steppers[SPEED_BRAKE].run();
+                }
+                else
+                {
+                    steppers[SPEED_BRAKE].disableOutputs();
+                    steppers[SPEED_BRAKE].setCurrentPosition(
+                        SPEED_BRAKE_DOWN_STEPS);
+
+                    speedBrakeFlightState = SPEEDBRAKE_GROUND;
+                    landingAutoDeployOccurred = false;
+                    speedBrakeUpCompleted = false;
+                    speedBrakePostDeployLowSeen = false;
+                    speedBrakeRetractInProgress = false;
+                    airborneConfirmRunning = false;
+                    airborneConfirmStartMs = 0;
+                }
+
+                continue;
+            }
+
+            // Normale v4 beweging (met name touchdown -> UP).
+            if (steppers[SPEED_BRAKE].distanceToGo() != 0)
+            {
+                steppers[SPEED_BRAKE].enableOutputs();
+                steppers[SPEED_BRAKE].run();
             }
             else
             {
-                steppers[SPEED_BRAKE]
-                    .disableOutputs();
+                steppers[SPEED_BRAKE].disableOutputs();
 
-                if (!speedBrakeDeployed)
+                // Retract-detectie pas NU vrijgeven: fysieke hendel
+                // staat daadwerkelijk volledig op UP.
+                if (speedBrakeDeployed &&
+                    landingAutoDeployOccurred &&
+                    steppers[SPEED_BRAKE].currentPosition() ==
+                        SPEED_BRAKE_UP_STEPS)
                 {
-                    steppers[SPEED_BRAKE]
-                        .setCurrentPosition(
-                            SPEED_BRAKE_DOWN_STEPS);
-
-                    // Pas na een echte landing auto-deploy EN de
-                    // daaropvolgende retract op de grond is de
-                    // vluchtcyclus klaar. Zo missen we de deploy niet
-                    // als SIM ON GROUND iets eerder binnenkomt dan 1.00.
-                    if (landingAutoDeployOccurred &&
-                        simOnGroundReceived &&
-                        simOnGround)
-                    {
-                        speedBrakeFlightState = SPEEDBRAKE_GROUND;
-                        landingAutoDeployOccurred = false;
-                        airborneConfirmRunning = false;
-                        airborneConfirmStartMs = 0;
-                    }
+                    speedBrakeUpCompleted = true;
                 }
             }
 
