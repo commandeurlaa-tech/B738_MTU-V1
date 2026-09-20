@@ -1,4 +1,6 @@
 #include "StepperModule.h"
+#include "Core.h"
+#include "Commands.h"
 #include <AccelStepper.h>
 #include <avr/interrupt.h>
 
@@ -270,6 +272,7 @@ bool landingAutoDeployOccurred = false;
 bool speedBrakeUpCompleted = false;
 bool speedBrakePostDeployLowSeen = false;
 bool speedBrakeRetractInProgress = false;
+
 
 // SIM ON GROUND moet minimaal 5 seconden onafgebroken FALSE zijn
 // voordat GROUND -> AIRBORNE geldig wordt.
@@ -1091,17 +1094,26 @@ if (THROTTLE_1_CALIBRATION)
             }
 
             // Start van de bewezen touchdown auto-UP.
-            if (deployed != speedBrakeDeployed &&
+            //
+            // BELANGRIJK v11:
+            // Dit generieke overgangsblok mag ALLEEN de auto-UP starten.
+            // In v10 werd bij PMDG DOWN (0) hier al voortijdig
+            // speedBrakeDeployed=false gezet en moveTo(0) gegeven.
+            // Daardoor faalde de echte retract-conditie eronder en werd
+            // in de volgende cyclus de handmatige-DOWN tak actief, die
+            // de motor uitschakelde en softwarematig op 0 synchroniseerde.
+            //
+            // DOWN na een landing wordt nu uitsluitend door de
+            // speedBrakeRetractInProgress-logica hieronder afgehandeld.
+            if (deployed &&
+                deployed != speedBrakeDeployed &&
                 !speedBrakeRetractInProgress)
             {
-                speedBrakeDeployed = deployed;
+                speedBrakeDeployed = true;
 
-                if (deployed)
-                {
-                    landingAutoDeployOccurred = true;
-                    speedBrakeUpCompleted = false;
-                    speedBrakePostDeployLowSeen = false;
-                }
+                landingAutoDeployOccurred = true;
+                speedBrakeUpCompleted = false;
+                speedBrakePostDeployLowSeen = false;
 
                 steppers[SPEED_BRAKE].setMaxSpeed(
                     SPEED_BRAKE_SPEED);
@@ -1114,32 +1126,25 @@ if (THROTTLE_1_CALIBRATION)
             // ------------------------------------------------
             // FASE 2: retract-detectie.
             //
-            // Terwijl de fysieke hendel de touchdown auto-UP nog
-            // afmaakt, kan PMDG al lagere waarden (~0.35-0.52)
-            // uitsturen. Voor de MOTOR blijven die waarden genegeerd
-            // door de UP-latch hierboven, maar we onthouden ze wel
-            // voor de latere autostow/retract-sequentie.
+            // De vluchtlog laat zien dat PMDG na de geldige
+            // touchdown auto-UP uiteindelijk rechtstreeks naar
+            // DOWN = 0.0 gaat.
+            //
+            // Daarom starten we de fysieke DOWN uitsluitend wanneer:
+            // - deze landing daadwerkelijk een auto-UP heeft gehad;
+            // - de fysieke hendel volledig UP (1600 stappen) staat;
+            // - we nog steeds in de LANDED-cyclus zitten;
+            // - PMDG de spoilerhendel terug op DOWN zet.
+            //
+            // De UP-logica/latch hierboven blijft ongewijzigd.
             // ------------------------------------------------
-            if (speedBrakeDeployed &&
-                landingAutoDeployOccurred &&
-                speedBrakeFlightState == SPEEDBRAKE_LANDED &&
-                !speedBrakeRetractInProgress &&
-                lastSpeedBrakePosition < SPEED_BRAKE_DEPLOY_THRESHOLD)
-            {
-                speedBrakePostDeployLowSeen = true;
-            }
 
-            // DOWN mag pas starten NADAT de fysieke auto-UP werkelijk
-            // 1600 stappen heeft bereikt. Als daarna de volgende
-            // PMDG 1.0 komt en we eerder een lage waarde hebben gezien,
-            // is dat de gemeten autostow/retract-sequentie.
             if (speedBrakeDeployed &&
                 landingAutoDeployOccurred &&
                 speedBrakeUpCompleted &&
                 speedBrakeFlightState == SPEEDBRAKE_LANDED &&
                 !speedBrakeRetractInProgress &&
-                speedBrakePostDeployLowSeen &&
-                lastSpeedBrakePosition >= SPEED_BRAKE_DEPLOY_THRESHOLD)
+                lastSpeedBrakePosition <= 0.05f)
             {
                 speedBrakeRetractInProgress = true;
                 speedBrakeDeployed = false;
